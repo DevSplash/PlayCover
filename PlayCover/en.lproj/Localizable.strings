@@ -71,6 +71,17 @@
 "preferences.toggle.showInstallPopup" = "Show install PlayTools popup";
 "preferences.toggle.alwaysInstallPlayTools" = "Always install PlayTools";
 "preferences.toggle.showAppStorePopup" = "Show an alert if the application has an official AppStore version";
+"preferences.tab.management" = "Management";
+"preferences.toggle.managementServer" = "Management Server";
+"preferences.text.listenIP" = "Listen IP";
+"preferences.text.port" = "Port";
+"preferences.text.accessKey" = "Access Key";
+"preferences.text.emptyAccessKey" = "Empty allows unrestricted access";
+"preferences.status.applied" = "Applied";
+"preferences.status.portInUse" = "Port is already in use";
+"preferences.status.invalidListenIP" = "Invalid listen IP";
+"preferences.status.portOutOfRange" = "Port is out of range";
+"preferences.status.applyFailed" = "Failed to apply settings";
 
 "sidebar.appLibrary" = "App Library";
 "sidebar.ipaLibrary" = "IPA Library";
@@ -129,6 +140,7 @@
 "button.Enable" = "Enable";
 "button.Reset" = "Reset";
 "button.Unlock" = "Unlock";
+"button.Apply" = "Apply";
 
 "state.enabled" = "Enabled";
 "state.disabled" = "Disabled";
@@ -197,6 +209,7 @@
 "settings.playChain.enable" = "Enable PlayChain (Experimental)";
 "settings.playChain.help" = "Enable PlayChain support for this application, allowing it to (partially) use Apple Keychain Services";
 "settings.playChain.debugging" = "PlayChain debugging";
+"settings.maaTools.portInUse" = "MaaTools port is already in use. The app may need another port before restart.";
 "settings.toggle.introspection" = "Insert Introspection libraries";
 "settings.toggle.introspection.help" = "Add the system introspection libraries to the app. Known to fix issues with some apps not starting correctly";
 "settings.toggle.iosFrameworks" = "Force Insert iOS Frameworks";

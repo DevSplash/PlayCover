@@ -315,6 +315,7 @@
 "settings.playChain.enable" = "启用 PlayChain (试验阶段)";
 "settings.playChain.help" = "在此应用启用 PlayChain 将使应用（部分）使用 Apple Keychain 服务";
 "settings.playChain.debugging" = "PlayChain 调试";
+"settings.maaTools.portInUse" = "MaaTools 端口已被占用，重启应用前可能需要更换端口。";
 "playapp.noSources.title" = "没有已安装的 IPA";
 "playapp.noSources.subtitle" = "当前你没有安装任何 IPA。点击下面的按钮来导入一个。";
 "settings.tab.bypasses" = "绕过";
@@ -386,3 +387,16 @@
 "ipaLibrary.AlphabeticalSort" = "按字母顺序排列应用来源";
 "alert.install.anyway" = "仍然安装";
 "alert.open.appstore" = "打开 Mac App Store";
+
+"preferences.tab.management" = "管理";
+"preferences.toggle.managementServer" = "管理服务器";
+"preferences.text.listenIP" = "监听 IP";
+"preferences.text.port" = "端口";
+"preferences.text.accessKey" = "访问密钥";
+"preferences.text.emptyAccessKey" = "留空则不限制访问";
+"preferences.status.applied" = "已应用";
+"preferences.status.portInUse" = "端口已被占用";
+"preferences.status.invalidListenIP" = "监听 IP 无效";
+"preferences.status.portOutOfRange" = "端口超出范围";
+"preferences.status.applyFailed" = "应用设置失败";
+"button.Apply" = "应用";

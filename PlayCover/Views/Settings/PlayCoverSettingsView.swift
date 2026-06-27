@@ -13,7 +13,7 @@ struct PlayCoverSettingsView: View {
     @EnvironmentObject var storeVM: StoreVM
 
     private enum Tabs: Hashable {
-        case updates, ipasource, keyCover, install, uninstall
+        case updates, ipasource, keyCover, install, uninstall, management
     }
 
     var body: some View {
@@ -44,6 +44,11 @@ struct PlayCoverSettingsView: View {
                   Label("preferences.tab.uninstall", systemImage: "trash.square")
                 }
                 .tag(Tabs.uninstall)
+            ManagementSettings.shared
+                .tabItem {
+                    Label("preferences.tab.management", systemImage: "network")
+                }
+                .tag(Tabs.management)
         }
     }
 }

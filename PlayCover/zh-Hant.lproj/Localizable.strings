@@ -295,6 +295,7 @@
 "error.failedToStripBinary" = "無法在通用二進制文件中檢索到 ARM64 架構！";
 "settings.playChain.enable" = "啟用 PlayChain (試驗階段)";
 "settings.playChain.help" = "在此應用程序啟用 PlayChain 將使應用程式（部分）使用 Apple Keychain 服務";
+"settings.maaTools.portInUse" = "MaaTools 連接埠已被佔用，重啟應用程式前可能需要更換連接埠。";
 "playapp.noSources.title" = "尚未安裝任何 IPA";
 "playapp.noSources.subtitle" = "暫時沒有安裝任何 IPA 文件。點擊下方的按鈕來導入一個。";
 "settings.tab.bypasses" = "繞道";
@@ -366,3 +367,16 @@
 "macos.version" = "This app can be installed from Mac App Store";
 "ipaLibrary.AlphabeticalSort" = "Sort source apps alphabetically";
 "alert.install.anyway" = "Install Anyway";
+
+"preferences.tab.management" = "管理";
+"preferences.toggle.managementServer" = "管理伺服器";
+"preferences.text.listenIP" = "監聽 IP";
+"preferences.text.port" = "連接埠";
+"preferences.text.accessKey" = "存取密鑰";
+"preferences.text.emptyAccessKey" = "留空則不限制存取";
+"preferences.status.applied" = "已套用";
+"preferences.status.portInUse" = "連接埠已被佔用";
+"preferences.status.invalidListenIP" = "監聽 IP 無效";
+"preferences.status.portOutOfRange" = "連接埠超出範圍";
+"preferences.status.applyFailed" = "套用設定失敗";
+"button.Apply" = "套用";

@@ -1,13 +1,13 @@
 # ``PlayCover``
 
-<!--@START_MENU_TOKEN@-->Summary<!--@END_MENU_TOKEN@-->
+Run iOS apps and games on Apple Silicon Macs with mouse, keyboard and controller support.
 
 ## Overview
 
-<!--@START_MENU_TOKEN@-->Text<!--@END_MENU_TOKEN@-->
+PlayCover wraps iOS applications so they can run natively on macOS.
 
 ## Topics
 
-### <!--@START_MENU_TOKEN@-->Group<!--@END_MENU_TOKEN@-->
+### Automation
 
-- <!--@START_MENU_TOKEN@-->``Symbol``<!--@END_MENU_TOKEN@-->
+- <doc:ManagementAPI>

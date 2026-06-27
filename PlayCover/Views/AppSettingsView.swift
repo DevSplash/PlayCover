@@ -543,6 +543,9 @@ struct BypassesView: View {
     @AppStorage("settings.settings.bypass") private var bypass = false
     @State private var hasIntrospection: Bool
     @State private var hasIosFrameworks: Bool
+    @State private var maaToolsPortInUse = false
+    @State private var maaToolsPortCheckTask: Task<Void, Never>?
+    @State private var runningMaaToolsPort: Int?
 
     var app: PlayApp
 
@@ -558,6 +561,12 @@ struct BypassesView: View {
         let lsEnvironment = app.info.lsEnvironment["DYLD_LIBRARY_PATH"] ?? ""
         self.hasIntrospection = lsEnvironment.contains(PlayApp.introspection)
         self.hasIosFrameworks = lsEnvironment.contains(PlayApp.iosFrameworks)
+    }
+
+    private var showsMaaToolsPortWarning: Bool {
+        settings.settings.maaTools &&
+            maaToolsPortInUse &&
+            settings.settings.maaToolsPort != runningMaaToolsPort
     }
 
     var body: some View {
@@ -585,6 +594,16 @@ struct BypassesView: View {
                     }
                     .disabled(!settings.settings.maaTools)
                     Spacer()
+                }
+                if showsMaaToolsPortWarning {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.yellow)
+                        Text("settings.maaTools.portInUse")
+                            .foregroundColor(.red)
+                            .font(.system(.subheadline))
+                        Spacer()
+                    }
                 }
                 Spacer()
                     .frame(height: 20)
@@ -634,6 +653,44 @@ struct BypassesView: View {
             Task {
                 _ = await app.changeDyldLibraryPath(set: hasIosFrameworks, path: PlayApp.iosFrameworks)
                 task = .none
+            }
+        }
+        .onAppear {
+            runningMaaToolsPort = settings.settings.maaTools && appIsRunning ? settings.settings.maaToolsPort : nil
+            updateMaaToolsPortWarning()
+        }
+        .onChange(of: settings.settings.maaTools) { _ in
+            updateMaaToolsPortWarning()
+        }
+        .onChange(of: settings.settings.maaToolsPort) { _ in
+            updateMaaToolsPortWarning()
+        }
+        .onDisappear {
+            maaToolsPortCheckTask?.cancel()
+        }
+    }
+
+    private var appIsRunning: Bool {
+        NSWorkspace.shared.runningApplications.contains {
+            $0.bundleIdentifier == app.info.bundleIdentifier && !$0.isTerminated
+        }
+    }
+
+    private func updateMaaToolsPortWarning() {
+        maaToolsPortCheckTask?.cancel()
+
+        guard settings.settings.maaTools else {
+            maaToolsPortInUse = false
+            return
+        }
+
+        let port = settings.settings.maaToolsPort
+        maaToolsPortCheckTask = Task {
+            let inUse = await PortProbe.isOpen(host: "127.0.0.1", port: port, timeout: 0.25)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                maaToolsPortInUse = inUse
             }
         }
     }
