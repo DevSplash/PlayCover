@@ -92,7 +92,7 @@ extension ManagementServer {
         return .ok(await status(for: app))
     }
 
-    private func restartApp(bundleIdentifier: String, body: [String: Any]) async -> ManagementResponse {
+    private func restartApp(bundleIdentifier: String, body: ManagementBody) async -> ManagementResponse {
         let stopResponse = await stopApp(bundleIdentifier: bundleIdentifier, body: body)
         guard stopResponse.statusCode == 200 else { return stopResponse }
         return await startApp(bundleIdentifier: bundleIdentifier, body: body)
@@ -166,9 +166,12 @@ extension ManagementServer {
             .first(where: { $0.bundleIdentifier == bundleIdentifier && !$0.isTerminated })
     }
 
-    private func startApp(bundleIdentifier: String, body: [String: Any]) async -> ManagementResponse {
+    private func startApp(bundleIdentifier: String, body: ManagementBody) async -> ManagementResponse {
         guard let app = await installedApp(bundleIdentifier: bundleIdentifier) else {
             return .notFound(["error": "app_not_found"])
+        }
+        guard let timeout = body.timeoutValue("timeout", defaultValue: 15) else {
+            return .badRequest(["error": "timeout_out_of_range"])
         }
 
         if await MainActor.run(body: { runningApplication(bundleIdentifier: bundleIdentifier) != nil }) {
@@ -176,14 +179,29 @@ extension ManagementServer {
         }
 
         await app.launch()
-        let timeout = body.doubleValue("timeout", defaultValue: 15)
-        _ = await waitForRunning(bundleIdentifier: bundleIdentifier, timeout: timeout)
-        return .ok(await status(for: app))
+        let started = await waitForRunning(bundleIdentifier: bundleIdentifier, timeout: timeout)
+        guard started else {
+            return .gatewayTimeout([
+                "error": "app_start_timeout",
+                "status": await status(for: app)
+            ])
+        }
+        let currentStatus = await status(for: app)
+        guard currentStatus["running"] as? Bool == true else {
+            return .gatewayTimeout([
+                "error": "app_start_timeout",
+                "status": currentStatus
+            ])
+        }
+        return .ok(currentStatus)
     }
 
-    private func stopApp(bundleIdentifier: String, body: [String: Any]) async -> ManagementResponse {
+    private func stopApp(bundleIdentifier: String, body: ManagementBody) async -> ManagementResponse {
         guard let app = await installedApp(bundleIdentifier: bundleIdentifier) else {
             return .notFound(["error": "app_not_found"])
+        }
+        guard let timeout = body.timeoutValue("timeout", defaultValue: 10) else {
+            return .badRequest(["error": "timeout_out_of_range"])
         }
 
         guard let runningApp = await MainActor.run(body: {
@@ -193,7 +211,6 @@ extension ManagementServer {
         }
 
         let force = body.boolValue("force", defaultValue: false)
-        let timeout = body.doubleValue("timeout", defaultValue: 10)
 
         _ = await MainActor.run {
             if force {
@@ -203,29 +220,73 @@ extension ManagementServer {
             }
         }
 
+        var stopped: Bool
         if !force {
-            let stopped = await waitForStopped(bundleIdentifier: bundleIdentifier, timeout: timeout)
+            stopped = await waitForStopped(bundleIdentifier: bundleIdentifier, timeout: timeout)
             if !stopped {
                 _ = await MainActor.run {
                     runningApp.forceTerminate()
                 }
-                _ = await waitForStopped(bundleIdentifier: bundleIdentifier, timeout: 5)
+                stopped = await waitForStopped(bundleIdentifier: bundleIdentifier, timeout: 5)
             }
         } else {
-            _ = await waitForStopped(bundleIdentifier: bundleIdentifier, timeout: timeout)
+            stopped = await waitForStopped(bundleIdentifier: bundleIdentifier, timeout: timeout)
         }
 
-        return .ok(await status(for: app))
+        guard stopped else {
+            return .gatewayTimeout([
+                "error": "app_stop_timeout",
+                "status": await status(for: app)
+            ])
+        }
+
+        let currentStatus = await status(for: app)
+        guard currentStatus["running"] as? Bool == false else {
+            return .gatewayTimeout([
+                "error": "app_stop_timeout",
+                "status": currentStatus
+            ])
+        }
+        return .ok(currentStatus)
     }
 
-    private func openMaaTools(bundleIdentifier: String, body: [String: Any]) async -> ManagementResponse {
+    private func openMaaTools(bundleIdentifier: String, body: ManagementBody) async -> ManagementResponse {
         guard let app = await installedApp(bundleIdentifier: bundleIdentifier) else {
             return .notFound(["error": "app_not_found"])
         }
 
         let requestedPort = body.intValue("port")
+        if body["port"] != nil && requestedPort == nil {
+            return .badRequest(["error": "invalid_port"])
+        }
         if let requestedPort = requestedPort, !(1024 ... 65535).contains(requestedPort) {
             return .badRequest(["error": "port_out_of_range"])
+        }
+        guard let portTimeout = body.timeoutValue("portTimeout", defaultValue: 15) else {
+            return .badRequest(["error": "port_timeout_out_of_range"])
+        }
+
+        let previousSettings = await MainActor.run {
+            MaaToolsSettingsSnapshot(
+                enabled: app.settings.settings.maaTools,
+                port: app.settings.settings.maaToolsPort
+            )
+        }
+        let port = requestedPort ?? previousSettings.port
+        let appIsRunning = await MainActor.run {
+            runningApplication(bundleIdentifier: bundleIdentifier) != nil
+        }
+
+        if await PortProbe.isOpen(host: "127.0.0.1", port: port) {
+            let probe = await MaaToolsProbe.inspect(
+                host: "127.0.0.1",
+                port: port,
+                expectedBundleIdentifier: bundleIdentifier
+            )
+            let mayBeBusyTarget = appIsRunning && previousSettings.enabled && previousSettings.port == port
+            if probe == nil && !mayBeBusyTarget {
+                return .conflict(["error": "maatools_port_in_use"])
+            }
         }
 
         await MainActor.run {
@@ -238,16 +299,24 @@ extension ManagementServer {
         let shouldRestart = body.boolValue("restart", defaultValue: true)
         if shouldRestart {
             let stopResponse = await stopApp(bundleIdentifier: bundleIdentifier, body: body)
-            guard stopResponse.statusCode == 200 else { return stopResponse }
-            let startResponse = await startApp(bundleIdentifier: bundleIdentifier, body: body)
-            guard startResponse.statusCode == 200 else { return startResponse }
-
-            let port = await MainActor.run {
-                app.settings.settings.maaToolsPort
+            guard stopResponse.statusCode == 200 else {
+                await restoreMaaToolsSettings(previousSettings, for: app)
+                return stopResponse
             }
-            let opened = await waitForPortOpen(port: port, timeout: body.doubleValue("portTimeout", defaultValue: 15))
-            if !opened {
-                return .badRequest([
+            let startResponse = await startApp(bundleIdentifier: bundleIdentifier, body: body)
+            guard startResponse.statusCode == 200 else {
+                await restoreMaaToolsSettings(previousSettings, for: app)
+                return startResponse
+            }
+
+            let probe = await waitForMaaTools(
+                bundleIdentifier: bundleIdentifier,
+                port: port,
+                timeout: portTimeout
+            )
+            if probe == nil {
+                await restoreMaaToolsSettings(previousSettings, for: app)
+                return .gatewayTimeout([
                     "error": "maatools_port_unavailable",
                     "status": await status(for: app)
                 ])
@@ -255,6 +324,13 @@ extension ManagementServer {
         }
 
         return .ok(await status(for: app))
+    }
+
+    private func restoreMaaToolsSettings(_ snapshot: MaaToolsSettingsSnapshot, for app: PlayApp) async {
+        await MainActor.run {
+            app.settings.settings.maaTools = snapshot.enabled
+            app.settings.settings.maaToolsPort = snapshot.port
+        }
     }
 
     private func waitForRunning(bundleIdentifier: String, timeout: TimeInterval) async -> Bool {
@@ -279,71 +355,22 @@ extension ManagementServer {
         return false
     }
 
-    private func waitForPortOpen(port: Int, timeout: TimeInterval) async -> Bool {
+    private func waitForMaaTools(bundleIdentifier: String,
+                                 port: Int,
+                                 timeout: TimeInterval) async -> MaaToolsProbeResult? {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if await PortProbe.isOpen(host: "127.0.0.1", port: port) {
-                return true
+            if let result = await MaaToolsProbe.inspect(
+                host: "127.0.0.1",
+                port: port,
+                expectedBundleIdentifier: bundleIdentifier
+            ) {
+                Log.shared.log(
+                    "Verified MaaTools v\(result.version) for \(result.bundleIdentifier) on port \(port)"
+                )
+                return result
             }
             try? await Task.sleep(nanoseconds: 300_000_000)
-        }
-        return false
-    }
-}
-
-private struct AppSnapshot {
-    let bundleIdentifier: String
-    let name: String
-    let path: String
-    let running: Bool
-    let pid: pid_t?
-    let maaToolsEnabled: Bool
-    let maaToolsPort: Int
-
-    func dictionary(maaToolsReachable: Bool) -> [String: Any] {
-        let processIdentifier: Any
-        if let pid = pid {
-            processIdentifier = Int(pid)
-        } else {
-            processIdentifier = NSNull()
-        }
-
-        return [
-            "bundleIdentifier": bundleIdentifier,
-            "name": name,
-            "path": path,
-            "running": running,
-            "pid": processIdentifier,
-            "maaTools": [
-                "enabled": maaToolsEnabled,
-                "port": maaToolsPort,
-                "reachable": maaToolsReachable
-            ]
-        ]
-    }
-}
-
-private extension Dictionary where Key == String, Value == Any {
-    func boolValue(_ key: String, defaultValue: Bool) -> Bool {
-        self[key] as? Bool ?? defaultValue
-    }
-
-    func doubleValue(_ key: String, defaultValue: Double) -> Double {
-        if let value = self[key] as? Double {
-            return value
-        }
-        if let value = self[key] as? Int {
-            return Double(value)
-        }
-        return defaultValue
-    }
-
-    func intValue(_ key: String) -> Int? {
-        if let value = self[key] as? Int {
-            return value
-        }
-        if let value = self[key] as? Double {
-            return Int(value)
         }
         return nil
     }

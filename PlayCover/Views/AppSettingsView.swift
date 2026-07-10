@@ -372,15 +372,18 @@ struct GraphicsView: View {
                     Text("settings.picker.contentScaleCompensation")
                     Spacer()
                     Picker("", selection: $settings.settings.contentScaleCompensationMode) {
-                        Text("settings.picker.contentScaleCompensation.0").tag(0)
-                        Text("settings.picker.contentScaleCompensation.1").tag(1)
-                        Text("settings.picker.contentScaleCompensation.2").tag(2)
+                        Text("settings.picker.contentScaleCompensation.0")
+                            .tag(ContentScaleCompensationMode.disabled)
+                        Text("settings.picker.contentScaleCompensation.1")
+                            .tag(ContentScaleCompensationMode.automatic)
+                        Text("settings.picker.contentScaleCompensation.2")
+                            .tag(ContentScaleCompensationMode.custom)
                     }
                     .frame(width: 250, alignment: .leading)
                     .help("settings.picker.contentScaleCompensation.help")
                     .disabled(!contentScaleCompensationAvailable)
                 }
-                if settings.settings.contentScaleCompensationMode == 2 && contentScaleCompensationAvailable {
+                if settings.settings.contentScaleCompensationMode == .custom && contentScaleCompensationAvailable {
                     HStack {
                         Text("settings.text.contentScaleFactor")
                         Spacer()
@@ -497,7 +500,7 @@ struct GraphicsView: View {
     }
 
     var contentScaleCompensationActive: Bool {
-        contentScaleCompensationAvailable && settings.settings.contentScaleCompensationMode != 0
+        contentScaleCompensationAvailable && settings.settings.contentScaleCompensationMode != .disabled
     }
 
     func setResolution() {
@@ -568,11 +571,11 @@ struct GraphicsView: View {
         }
 
         switch settings.settings.contentScaleCompensationMode {
-        case 1:
+        case .automatic:
             return 0.77
-        case 2:
+        case .custom:
             return max(settings.settings.contentScaleCompensationValue, 0.01)
-        default:
+        case .disabled:
             return 1.0
         }
     }

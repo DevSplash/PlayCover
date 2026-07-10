@@ -36,9 +36,11 @@ final class ManagementServer {
 
     private let queue = DispatchQueue(label: "io.playcover.management.server", qos: .utility)
     private let stateLock = NSLock()
+    private let maximumClientCount = 32
     private var socketFD: Int32 = -1
     private var currentHost = ""
     private var currentPort = 0
+    private var clientCount = 0
 
     private init() {}
 
@@ -233,11 +235,32 @@ final class ManagementServer {
             }
 
             configureClientSocket(clientSocketDescriptor)
+            guard reserveClientSlot() else {
+                writeResponse(.serviceUnavailable(["error": "too_many_connections"]),
+                              to: clientSocketDescriptor)
+                Darwin.close(clientSocketDescriptor)
+                continue
+            }
 
             Task.detached(priority: .utility) {
+                defer { self.releaseClientSlot() }
                 await self.handleConnection(clientSocketDescriptor)
             }
         }
+    }
+
+    private func reserveClientSlot() -> Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard clientCount < maximumClientCount else { return false }
+        clientCount += 1
+        return true
+    }
+
+    private func releaseClientSlot() {
+        stateLock.lock()
+        clientCount = max(0, clientCount - 1)
+        stateLock.unlock()
     }
 
     private func configureClientSocket(_ socketDescriptor: Int32) {
@@ -307,6 +330,9 @@ private extension ManagementServer {
             }
 
             let contentLength = Int(headers["content-length"] ?? "") ?? 0
+            guard contentLength >= 0, contentLength <= maxRequestSize - headerEnd else {
+                return nil
+            }
             let requiredSize = headerEnd + contentLength
             if data.count < requiredSize {
                 continue

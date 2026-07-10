@@ -7,6 +7,32 @@ import AppKit
 import Foundation
 import UniformTypeIdentifiers
 
+enum ContentScaleCompensationMode: Int, Codable, Hashable {
+    case disabled = 0
+    case automatic = 1
+    case custom = 2
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        // Accept temporary mode values written by earlier development builds.
+        switch try container.decode(Int.self) {
+        case Self.automatic.rawValue:
+            self = .automatic
+        case Self.custom.rawValue, 4:
+            self = .custom
+        case Self.disabled.rawValue, 3:
+            self = .disabled
+        default:
+            self = .disabled
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
 struct AppSettingsData: Codable {
     var bundleIdentifier: String = ""
 
@@ -22,7 +48,7 @@ struct AppSettingsData: Codable {
     var resolution = 1
     var targetWindowWidth = 1920
     var targetWindowHeight = 1080
-    var contentScaleCompensationMode = 0
+    var contentScaleCompensationMode = ContentScaleCompensationMode.disabled
     var contentScaleCompensationValue = 0.77
     var aspectRatio = 1
     var notch: Bool = NSScreen.hasNotch()
@@ -78,20 +104,10 @@ struct AppSettingsData: Codable {
                                                           forKey: .targetWindowWidth) ?? windowWidth
         targetWindowHeight = try container.decodeIfPresent(Int.self,
                                                            forKey: .targetWindowHeight) ?? windowHeight
-        let decodedContentScaleCompensationMode = try container.decodeIfPresent(
-            Int.self,
+        contentScaleCompensationMode = try container.decodeIfPresent(
+            ContentScaleCompensationMode.self,
             forKey: .contentScaleCompensationMode
-        ) ?? 0
-        switch decodedContentScaleCompensationMode {
-        case 2:
-            contentScaleCompensationMode = 1
-        case 3:
-            contentScaleCompensationMode = 0
-        case 4:
-            contentScaleCompensationMode = 2
-        default:
-            contentScaleCompensationMode = decodedContentScaleCompensationMode
-        }
+        ) ?? .disabled
         contentScaleCompensationValue = try container.decodeIfPresent(
             Double.self,
             forKey: .contentScaleCompensationValue

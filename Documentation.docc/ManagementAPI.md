@@ -19,6 +19,10 @@ When a key is configured, pass it with one of these methods:
 - `X-PlayCover-Key: <key>`
 - `?key=<key>`
 
+Prefer an HTTP header when accessing PlayCover over a network because query parameters
+may be recorded by clients or proxies. The management protocol does not provide TLS;
+only expose it on a trusted network or place it behind a trusted encrypted tunnel.
+
 ## Endpoints
 
 All request and response bodies are JSON.
@@ -71,6 +75,8 @@ Optional body:
 ```
 
 Starts the app if it is not already running.
+PlayCover returns `200` only after the process is observed running and `504` if the
+operation times out. Timeout values must be between 0.1 and 120 seconds.
 
 ### Stop App
 
@@ -88,6 +94,8 @@ Optional body:
 ```
 
 Stops the app. If graceful termination times out, PlayCover force terminates it.
+PlayCover returns `200` only after the process is observed stopped and `504` if both
+termination attempts fail to stop it. Timeout values must be between 0.1 and 120 seconds.
 
 ### Restart App
 
@@ -116,7 +124,10 @@ Optional body:
 
 This enables MaaTools for the app, optionally updates its MaaTools port,
 and restarts the app by default so the injected PlayTools process opens the requested port.
-If the requested port is not reachable after restart, the endpoint returns
-`maatools_port_unavailable`.
+Before changing settings, PlayCover returns `409` if another service occupies the
+requested port. After a restart, PlayCover completes the MaaTools handshake, reads the
+protocol version, and verifies the target bundle identifier. If verification times out,
+the endpoint returns `504` with `maatools_port_unavailable` and restores the previous
+saved MaaTools settings. `portTimeout` must be between 0.1 and 120 seconds.
 When the port is changed without a restart, the new value is saved but a running app
 continues listening on its previous MaaTools port until it is restarted.
