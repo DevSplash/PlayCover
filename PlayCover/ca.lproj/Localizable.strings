@@ -257,3 +257,12 @@
 "macos.version" = "This app can be installed from Mac App Store";
 "ipaLibrary.AlphabeticalSort" = "Sort source apps alphabetically";
 "alert.install.anyway" = "Install Anyway";
+
+"settings.picker.contentScaleCompensation" = "Content scale compensation";
+"settings.picker.contentScaleCompensation.help" = "Compensate macOS content scaling so native window captures match the target size";
+"settings.picker.contentScaleCompensation.0" = "Off";
+"settings.picker.contentScaleCompensation.1" = "Auto";
+"settings.picker.contentScaleCompensation.2" = "Custom";
+"settings.text.contentScaleFactor" = "Content scale";
+"settings.text.targetContentResolution" = "Target content resolution";
+"settings.text.internalResolution" = "Internal resolution";

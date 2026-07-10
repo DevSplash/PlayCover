@@ -202,6 +202,14 @@
 "settings.noPlayTools" = "PlayTools is not installed in this app";
 "settings.highResolution" = "High resolution may cause crashing";
 "settings.picker.scaler" = "Resolution Scaler";
+"settings.picker.contentScaleCompensation" = "Content scale compensation";
+"settings.picker.contentScaleCompensation.help" = "Compensate macOS content scaling so native window captures match the target size";
+"settings.picker.contentScaleCompensation.0" = "Off";
+"settings.picker.contentScaleCompensation.1" = "Auto";
+"settings.picker.contentScaleCompensation.2" = "Custom";
+"settings.text.contentScaleFactor" = "Content scale";
+"settings.text.targetContentResolution" = "Target content resolution";
+"settings.text.internalResolution" = "Internal resolution";
 
 "settings.tab.bypasses" = "Bypasses";
 "settings.toggle.jbBypass" = "Enable Jailbreak Bypass (Experimental)";

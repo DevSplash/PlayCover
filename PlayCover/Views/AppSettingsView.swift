@@ -208,8 +208,16 @@ struct GraphicsView: View {
     static var fractionFormatter: NumberFormatter {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 1
+        formatter.maximumFractionDigits = 2
         formatter.minimumFractionDigits = 1
+        formatter.decimalSeparator = "."
+        return formatter
+    }
+    static var scaleFormatter: NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 2
+        formatter.minimumFractionDigits = 2
         formatter.decimalSeparator = "."
         return formatter
     }
@@ -358,6 +366,53 @@ struct GraphicsView: View {
                     } onDecrement: {
                         if customScaler > 0.5 { customScaler -= 0.1 }
                     }
+                    .disabled(contentScaleCompensationActive)
+                }
+                HStack {
+                    Text("settings.picker.contentScaleCompensation")
+                    Spacer()
+                    Picker("", selection: $settings.settings.contentScaleCompensationMode) {
+                        Text("settings.picker.contentScaleCompensation.0").tag(0)
+                        Text("settings.picker.contentScaleCompensation.1").tag(1)
+                        Text("settings.picker.contentScaleCompensation.2").tag(2)
+                    }
+                    .frame(width: 250, alignment: .leading)
+                    .help("settings.picker.contentScaleCompensation.help")
+                    .disabled(!contentScaleCompensationAvailable)
+                }
+                if settings.settings.contentScaleCompensationMode == 2 && contentScaleCompensationAvailable {
+                    HStack {
+                        Text("settings.text.contentScaleFactor")
+                        Spacer()
+                        Stepper {
+                            TextField(
+                                "settings.text.contentScaleFactor",
+                                value: $settings.settings.contentScaleCompensationValue,
+                                formatter: GraphicsView.scaleFormatter,
+                                onCommit: {
+                                    Task { @MainActor in NSApp.keyWindow?.makeFirstResponder(nil) }
+                                })
+                                .frame(width: 125)
+                        } onIncrement: {
+                            settings.settings.contentScaleCompensationValue += 0.01
+                        } onDecrement: {
+                            if settings.settings.contentScaleCompensationValue > 0.01 {
+                                settings.settings.contentScaleCompensationValue -= 0.01
+                            }
+                        }
+                    }
+                }
+                if contentScaleCompensationActive {
+                    HStack {
+                        Text("settings.text.targetContentResolution")
+                        Spacer()
+                        Text("\(settings.settings.targetWindowWidth) x \(settings.settings.targetWindowHeight)")
+                    }
+                    HStack {
+                        Text("settings.text.internalResolution")
+                        Spacer()
+                        Text("\(settings.settings.windowWidth) x \(settings.settings.windowHeight)")
+                    }
                 }
                 VStack(alignment: .leading) {
                     if #available(macOS 13.2, *) {
@@ -405,9 +460,10 @@ struct GraphicsView: View {
             }
             .padding()
             .onAppear {
-                customWidth = settings.settings.windowWidth
-                customHeight = settings.settings.windowHeight
+                customWidth = settings.settings.targetWindowWidth
+                customHeight = settings.settings.targetWindowHeight
                 customScaler = settings.settings.customScaler
+                setResolution()
             }
             .onChange(of: settings.settings.resolution) { _ in
                 setResolution()
@@ -424,49 +480,101 @@ struct GraphicsView: View {
             .onChange(of: customScaler) { _ in
                 setResolution()
             }
+            .onChange(of: settings.settings.contentScaleCompensationMode) { _ in
+                setResolution()
+            }
+            .onChange(of: settings.settings.contentScaleCompensationValue) { _ in
+                setResolution()
+            }
             .onChange(of: settings.settings.resizableAspectRatioType) { _ in
                 setAspectRatioForResizableWindow()
             }
         }
     }
 
+    var contentScaleCompensationAvailable: Bool {
+        settings.settings.resolution != 0 && settings.settings.resolution != 6
+    }
+
+    var contentScaleCompensationActive: Bool {
+        contentScaleCompensationAvailable && settings.settings.contentScaleCompensationMode != 0
+    }
+
     func setResolution() {
-        var width: Int
-        var height: Int
+        var targetWidth: Int
+        var targetHeight: Int
 
         switch settings.settings.resolution {
         // Adaptive resolution = Auto
         case 1:
-            width = Int(NSScreen.main?.frame.width ?? 1920)
-            height = getHeightForNotch(width, Int(NSScreen.main?.frame.height ?? 1080))
+            targetWidth = Int(NSScreen.main?.frame.width ?? 1920)
+            targetHeight = getHeightForNotch(targetWidth, Int(NSScreen.main?.frame.height ?? 1080))
         // Adaptive resolution = 1080p
         case 2:
-            height = 1080
-            width = getWidthFromAspectRatio(height)
+            targetHeight = 1080
+            targetWidth = getWidthFromAspectRatio(targetHeight)
         // Adaptive resolution = 1440p
         case 3:
-            height = 1440
-            width = getWidthFromAspectRatio(height)
+            targetHeight = 1440
+            targetWidth = getWidthFromAspectRatio(targetHeight)
         // Adaptive resolution = 4K
         case 4:
-            height = 2160
-            width = getWidthFromAspectRatio(height)
+            targetHeight = 2160
+            targetWidth = getWidthFromAspectRatio(targetHeight)
         // Adaptive resolution = Custom
         case 5:
-            width = customWidth
-            height = customHeight
+            targetWidth = customWidth
+            targetHeight = customHeight
         // Adaptive resolution = Off
         default:
-            height = 1080
-            width = 1920
+            targetHeight = 1080
+            targetWidth = 1920
         }
 
-        settings.settings.windowWidth = width
-        settings.settings.windowHeight = height
-        settings.settings.customScaler = customScaler
+        settings.settings.targetWindowWidth = targetWidth
+        settings.settings.targetWindowHeight = targetHeight
+        let internalWidth = compensatedResolution(targetWidth)
+        let internalHeight = compensatedResolution(targetHeight)
+        settings.settings.windowWidth = internalWidth
+        settings.settings.windowHeight = internalHeight
 
-        showResolutionWarning = Double(width * height) * customScaler >= 2621440 * 2.0
+        let scaler = effectiveScaler(targetWidth: targetWidth, internalWidth: internalWidth)
+        settings.settings.customScaler = scaler
+        if contentScaleCompensationActive && customScaler != scaler {
+            customScaler = scaler
+        }
+
+        let internalPixels = settings.settings.windowWidth * settings.settings.windowHeight
+        showResolutionWarning = Double(internalPixels) * scaler >= 2621440 * 2.0
         // Tends to crash when the number of pixels exceeds that
+    }
+
+    func compensatedResolution(_ value: Int) -> Int {
+        let scale = contentScaleCompensationScale()
+        return max(1, Int((Double(value) / scale).rounded(.up)))
+    }
+
+    func effectiveScaler(targetWidth: Int, internalWidth: Int) -> Double {
+        guard contentScaleCompensationActive && internalWidth > 0 else {
+            return customScaler
+        }
+
+        return Double(targetWidth) / Double(internalWidth)
+    }
+
+    func contentScaleCompensationScale() -> Double {
+        guard contentScaleCompensationAvailable else {
+            return 1.0
+        }
+
+        switch settings.settings.contentScaleCompensationMode {
+        case 1:
+            return 0.77
+        case 2:
+            return max(settings.settings.contentScaleCompensationValue, 0.01)
+        default:
+            return 1.0
+        }
     }
 
     func getWidthFromAspectRatio(_ height: Int) -> Int {

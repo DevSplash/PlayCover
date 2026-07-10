@@ -380,3 +380,12 @@
 "preferences.status.portOutOfRange" = "連接埠超出範圍";
 "preferences.status.applyFailed" = "套用設定失敗";
 "button.Apply" = "套用";
+
+"settings.picker.contentScaleCompensation" = "內容縮放補償";
+"settings.picker.contentScaleCompensation.help" = "補償 macOS 的內容縮放，使原生視窗截圖符合目標尺寸";
+"settings.picker.contentScaleCompensation.0" = "關閉";
+"settings.picker.contentScaleCompensation.1" = "自動";
+"settings.picker.contentScaleCompensation.2" = "自訂";
+"settings.text.contentScaleFactor" = "內容縮放";
+"settings.text.targetContentResolution" = "目標內容解析度";
+"settings.text.internalResolution" = "內部解析度";

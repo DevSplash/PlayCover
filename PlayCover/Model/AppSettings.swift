@@ -20,6 +20,10 @@ struct AppSettingsData: Codable {
     var windowHeight = 1080
     var customScaler = 2.0
     var resolution = 1
+    var targetWindowWidth = 1920
+    var targetWindowHeight = 1080
+    var contentScaleCompensationMode = 0
+    var contentScaleCompensationValue = 0.77
     var aspectRatio = 1
     var notch: Bool = NSScreen.hasNotch()
     var bypass = false
@@ -70,6 +74,28 @@ struct AppSettingsData: Codable {
         windowHeight = try container.decodeIfPresent(Int.self, forKey: .windowHeight) ?? 1080
         customScaler = try container.decodeIfPresent(Double.self, forKey: .customScaler) ?? 2.0
         resolution = try container.decodeIfPresent(Int.self, forKey: .resolution) ?? 1
+        targetWindowWidth = try container.decodeIfPresent(Int.self,
+                                                          forKey: .targetWindowWidth) ?? windowWidth
+        targetWindowHeight = try container.decodeIfPresent(Int.self,
+                                                           forKey: .targetWindowHeight) ?? windowHeight
+        let decodedContentScaleCompensationMode = try container.decodeIfPresent(
+            Int.self,
+            forKey: .contentScaleCompensationMode
+        ) ?? 0
+        switch decodedContentScaleCompensationMode {
+        case 2:
+            contentScaleCompensationMode = 1
+        case 3:
+            contentScaleCompensationMode = 0
+        case 4:
+            contentScaleCompensationMode = 2
+        default:
+            contentScaleCompensationMode = decodedContentScaleCompensationMode
+        }
+        contentScaleCompensationValue = try container.decodeIfPresent(
+            Double.self,
+            forKey: .contentScaleCompensationValue
+        ) ?? 0.77
         aspectRatio = try container.decodeIfPresent(Int.self, forKey: .aspectRatio) ?? 1
         notch = try container.decodeIfPresent(Bool.self, forKey: .notch) ?? NSScreen.hasNotch()
         bypass = try container.decodeIfPresent(Bool.self, forKey: .bypass) ?? false
