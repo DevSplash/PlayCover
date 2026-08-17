@@ -116,9 +116,14 @@ class Installer {
                 if export {
                     finalURL = try ipa.packIPABack(app: app.url)
                 } else {
+                    let settingsExisted = appSettingsExist(for: info.bundleIdentifier)
                     finalURL = try wrap(app)
                     let installedApp = PlayApp(appUrl: finalURL)
-
+                    if !settingsExisted {
+                        installedApp.settings.settings.macOSNativeScaling =
+                            InstallPreferences.shared.useNativeMacOSScalingForNewApps
+                    }
+                    installedApp.applyNativeMacOSScaling()
                     installedApp.sign()
                 }
 
@@ -220,6 +225,13 @@ class Installer {
         if FileManager.default.fileExists(atPath: provision.path) {
             try FileManager.default.removeItem(at: provision)
         }
+    }
+
+    static func appSettingsExist(for bundleIdentifier: String) -> Bool {
+        let settingsURL = AppSettings.appSettingsDir
+            .appendingPathComponent(bundleIdentifier)
+            .appendingPathExtension("plist")
+        return FileManager.default.fileExists(atPath: settingsURL.path)
     }
 
     /// Generates a wrapper bundle for an iOS app that allows it to be launched from Finder and other macOS UIs

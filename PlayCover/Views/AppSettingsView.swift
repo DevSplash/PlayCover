@@ -81,7 +81,7 @@ struct AppSettingsView: View {
                         Text("settings.tab.km")
                     }
                     .disabled(!(hasPlayTools ?? true))
-                GraphicsView(settings: $viewModel.settings)
+                GraphicsView(settings: $viewModel.settings, app: viewModel.app)
                     .tabItem {
                         Text("settings.tab.graphics")
                     }
@@ -113,8 +113,8 @@ struct AppSettingsView: View {
             HStack {
                 Spacer()
                 Button("settings.resetSettings") {
+                    viewModel.app.resetSettings()
                     resetSettingsCompletedAlert.toggle()
-                    viewModel.app.settings.reset()
                     closeView.toggle()
                 }
                 Button("playapp.keymap") {
@@ -190,6 +190,7 @@ struct KeymappingView: View {
 // swiftlint:disable:next type_body_length
 struct GraphicsView: View {
     @Binding var settings: AppSettings
+    var app: PlayApp
     @State var customWidth = 1920
     @State var customHeight = 1080
     @State var showResolutionWarning = false
@@ -355,7 +356,7 @@ struct GraphicsView: View {
                     Stepper {
                         TextField(
                             "settings.text.scaler",
-                            value: $customScaler,
+                            value: displayedScaler,
                             formatter: GraphicsView.fractionFormatter,
                             onCommit: {
                                 Task { @MainActor in NSApp.keyWindow?.makeFirstResponder(nil) }
@@ -366,7 +367,19 @@ struct GraphicsView: View {
                     } onDecrement: {
                         if customScaler > 0.5 { customScaler -= 0.1 }
                     }
-                    .disabled(contentScaleCompensationActive)
+                    .disabled(contentScaleCompensationActive || settings.settings.usesMacOSNativeScaling)
+                }
+                HStack {
+                    Text("settings.picker.macOSNativeScaling")
+                    Spacer()
+                    Picker("", selection: nativeScalingBinding) {
+                        Text("settings.picker.macOSNativeScaling.default")
+                            .tag(false)
+                        Text("settings.picker.macOSNativeScaling.native")
+                            .tag(true)
+                    }
+                    .frame(width: 250, alignment: .leading)
+                    .help("settings.picker.macOSNativeScaling.help")
                 }
                 HStack {
                     Text("settings.picker.contentScaleCompensation")
@@ -381,9 +394,11 @@ struct GraphicsView: View {
                     }
                     .frame(width: 250, alignment: .leading)
                     .help("settings.picker.contentScaleCompensation.help")
-                    .disabled(!contentScaleCompensationAvailable)
+                    .disabled(!contentScaleCompensationAvailable || settings.settings.usesMacOSNativeScaling)
                 }
-                if settings.settings.contentScaleCompensationMode == .custom && contentScaleCompensationAvailable {
+                if settings.settings.contentScaleCompensationMode == .custom &&
+                    contentScaleCompensationAvailable &&
+                    !settings.settings.usesMacOSNativeScaling {
                     HStack {
                         Text("settings.text.contentScaleFactor")
                         Spacer()
@@ -496,11 +511,34 @@ struct GraphicsView: View {
     }
 
     var contentScaleCompensationAvailable: Bool {
-        settings.settings.resolution != 0 && settings.settings.resolution != 6
+        settings.settings.isContentScaleCompensationAvailable
     }
 
     var contentScaleCompensationActive: Bool {
-        contentScaleCompensationAvailable && settings.settings.contentScaleCompensationMode != .disabled
+        settings.settings.isContentScaleCompensationActive
+    }
+
+    var nativeScalingBinding: Binding<Bool> {
+        Binding(
+            get: { settings.settings.usesMacOSNativeScaling },
+            set: { newValue in
+                settings.settings.macOSNativeScaling = newValue
+                setResolution()
+                settings = app.settings
+                app.applyNativeMacOSScaling()
+                app.promptNativeScalingRestart()
+            }
+        )
+    }
+
+    var displayedScaler: Binding<Double> {
+        Binding(
+            get: { settings.settings.usesMacOSNativeScaling ? 1.0 : customScaler },
+            set: { newValue in
+                guard !settings.settings.usesMacOSNativeScaling else { return }
+                customScaler = newValue
+            }
+        )
     }
 
     func setResolution() {
@@ -536,19 +574,26 @@ struct GraphicsView: View {
 
         settings.settings.targetWindowWidth = targetWidth
         settings.settings.targetWindowHeight = targetHeight
-        let internalWidth = compensatedResolution(targetWidth)
-        let internalHeight = compensatedResolution(targetHeight)
-        settings.settings.windowWidth = internalWidth
-        settings.settings.windowHeight = internalHeight
 
-        let scaler = effectiveScaler(targetWidth: targetWidth, internalWidth: internalWidth)
-        settings.settings.customScaler = scaler
-        if contentScaleCompensationActive && customScaler != scaler {
-            customScaler = scaler
+        if settings.settings.usesMacOSNativeScaling {
+            settings.settings.windowWidth = targetWidth
+            settings.settings.windowHeight = targetHeight
+        } else {
+            let internalWidth = compensatedResolution(targetWidth)
+            let internalHeight = compensatedResolution(targetHeight)
+            settings.settings.windowWidth = internalWidth
+            settings.settings.windowHeight = internalHeight
+
+            let scaler = effectiveScaler(targetWidth: targetWidth, internalWidth: internalWidth)
+            settings.settings.customScaler = scaler
+            if contentScaleCompensationActive && customScaler != scaler {
+                customScaler = scaler
+            }
         }
 
+        let warningScaler = settings.settings.usesMacOSNativeScaling ? 1.0 : customScaler
         let internalPixels = settings.settings.windowWidth * settings.settings.windowHeight
-        showResolutionWarning = Double(internalPixels) * scaler >= 2621440 * 2.0
+        showResolutionWarning = Double(internalPixels) * warningScaler >= 2621440 * 2.0
         // Tends to crash when the number of pixels exceeds that
     }
 
@@ -558,6 +603,9 @@ struct GraphicsView: View {
     }
 
     func effectiveScaler(targetWidth: Int, internalWidth: Int) -> Double {
+        if settings.settings.usesMacOSNativeScaling {
+            return 1.0
+        }
         guard contentScaleCompensationActive && internalWidth > 0 else {
             return customScaler
         }
@@ -566,7 +614,7 @@ struct GraphicsView: View {
     }
 
     func contentScaleCompensationScale() -> Double {
-        guard contentScaleCompensationAvailable else {
+        if settings.settings.usesMacOSNativeScaling || !contentScaleCompensationAvailable {
             return 1.0
         }
 

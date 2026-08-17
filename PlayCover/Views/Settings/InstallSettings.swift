@@ -17,6 +17,8 @@ class InstallPreferences: NSObject, ObservableObject {
     @AppStorage("ShowInstallPopup") var showInstallPopup = false
 
     @AppStorage("ShowAppStorePopup") var showAppStorePopup = true
+
+    @AppStorage("UseNativeMacOSScalingForNewApps") var useNativeMacOSScalingForNewApps = false
 }
 
 struct InstallSettings: View {
@@ -56,8 +58,13 @@ struct InstallSettings: View {
                         .frame(height: 20)
                 }
             }.disabled(installPreferences.showInstallPopup)
+            Spacer()
+                .frame(height: 20)
+            Toggle("preferences.toggle.useNativeMacOSScalingForNewApps",
+                   isOn: $installPreferences.useNativeMacOSScalingForNewApps)
+                .help("preferences.toggle.useNativeMacOSScalingForNewApps.help")
         }
         .padding(20)
-        .frame(width: 600, height: 200)
+        .frame(width: 600, height: 250)
     }
 }

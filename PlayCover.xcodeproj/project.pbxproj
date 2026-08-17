@@ -12,6 +12,7 @@
 		C0D3C0D32F00000100000006 /* ManagementServer+Routing.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D3C0D32F00000100000005 /* ManagementServer+Routing.swift */; };
 		C0D3C0D32F00000100000008 /* ManagementModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D3C0D32F00000100000007 /* ManagementModels.swift */; };
 		C0D3C0D32F0000010000000A /* PortProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D3C0D32F00000100000009 /* PortProbe.swift */; };
+		C0D3C0D32F0000010000000C /* NativeScalingPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D3C0D32F0000010000000B /* NativeScalingPreferences.swift */; };
 		342787552E787EBB003A3C2F /* Keymapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 342787542E787EB9003A3C2F /* Keymapping.swift */; };
 		3447B5E52E28B46800FAA22F /* KeymapViewVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3447B5E42E28B46800FAA22F /* KeymapViewVM.swift */; };
 		34775E752D493B59001586C2 /* CachedAsyncImageWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34775E742D493B54001586C2 /* CachedAsyncImageWrapper.swift */; };
@@ -108,6 +109,7 @@
 		C0D3C0D32F00000100000005 /* ManagementServer+Routing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ManagementServer+Routing.swift"; sourceTree = "<group>"; };
 		C0D3C0D32F00000100000007 /* ManagementModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagementModels.swift; sourceTree = "<group>"; };
 		C0D3C0D32F00000100000009 /* PortProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortProbe.swift; sourceTree = "<group>"; };
+		C0D3C0D32F0000010000000B /* NativeScalingPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeScalingPreferences.swift; sourceTree = "<group>"; };
 		342787542E787EB9003A3C2F /* Keymapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keymapping.swift; sourceTree = "<group>"; };
 		3447B5E42E28B46800FAA22F /* KeymapViewVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeymapViewVM.swift; sourceTree = "<group>"; };
 		34775E742D493B54001586C2 /* CachedAsyncImageWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachedAsyncImageWrapper.swift; sourceTree = "<group>"; };
@@ -368,6 +370,7 @@
 				ABBC85B82B7C5CBA00DCF223 /* ModifierKeyObserver.swift */,
 				B67BC7112C39354500315011 /* UpdateScheme.swift */,
 				C0D3C0D32F00000100000009 /* PortProbe.swift */,
+				C0D3C0D32F0000010000000B /* NativeScalingPreferences.swift */,
 			);
 			path = Utils;
 			sourceTree = "<group>";
@@ -705,6 +708,7 @@
 				ABBC85B92B7C5CBA00DCF223 /* ModifierKeyObserver.swift in Sources */,
 				92F8500A27675124005CE6BE /* AppIntegrity.swift in Sources */,
 				C0D3C0D32F0000010000000A /* PortProbe.swift in Sources */,
+				C0D3C0D32F0000010000000C /* NativeScalingPreferences.swift in Sources */,
 				AAE2F78F2F725632001336C9 /* ViewExtensions.swift in Sources */,
 				342787552E787EBB003A3C2F /* Keymapping.swift in Sources */,
 				B44B40372C1E315600CE2A3E /* GoogleDrive.swift in Sources */,

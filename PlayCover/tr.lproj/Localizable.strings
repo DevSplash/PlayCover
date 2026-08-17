@@ -266,3 +266,15 @@
 "settings.text.contentScaleFactor" = "Content scale";
 "settings.text.targetContentResolution" = "Target content resolution";
 "settings.text.internalResolution" = "Internal resolution";
+
+"preferences.toggle.useNativeMacOSScalingForNewApps" = "Use native macOS scaling for newly installed apps";
+"preferences.toggle.useNativeMacOSScalingForNewApps.help" = "New installs inherit this setting. Updating an existing app keeps its current per-app setting.";
+"settings.alert.nativeScalingRestart.title" = "Restart required";
+"settings.alert.nativeScalingRestart.message" = "Fully quit and reopen the app for this setting to take effect.";
+"settings.alert.nativeScalingRestart.quitAndReopen" = "Quit & Reopen";
+"settings.alert.nativeScalingRestart.later" = "Later";
+"settings.alert.nativeScalingRestart.quitFailed" = "The app did not quit. Quit it manually and reopen it from PlayCover.";
+"settings.picker.macOSNativeScaling" = "macOS content scale";
+"settings.picker.macOSNativeScaling.help" = "Use the default macOS iPad app scale, or force native 1:1 content scale";
+"settings.picker.macOSNativeScaling.default" = "Use macOS default scaling";
+"settings.picker.macOSNativeScaling.native" = "Use native 1:1 scaling";

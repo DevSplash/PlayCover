@@ -389,3 +389,15 @@
 "settings.text.contentScaleFactor" = "內容縮放";
 "settings.text.targetContentResolution" = "目標內容解析度";
 "settings.text.internalResolution" = "內部解析度";
+
+"preferences.toggle.useNativeMacOSScalingForNewApps" = "對新安裝的應用使用 macOS 原生縮放";
+"preferences.toggle.useNativeMacOSScalingForNewApps.help" = "新安裝的應用會繼承此設定。更新既有應用時保留其原有的個別應用設定。";
+"settings.alert.nativeScalingRestart.title" = "需要重新開啟應用";
+"settings.alert.nativeScalingRestart.message" = "必須完全結束並重新開啟應用後，此設定才會生效。";
+"settings.alert.nativeScalingRestart.quitAndReopen" = "結束並重新開啟";
+"settings.alert.nativeScalingRestart.later" = "稍後";
+"settings.alert.nativeScalingRestart.quitFailed" = "應用未能結束。請手動結束後從 PlayCover 重新開啟。";
+"settings.picker.macOSNativeScaling" = "macOS 內容縮放";
+"settings.picker.macOSNativeScaling.help" = "使用 macOS 預設 iPad App 縮放，或強制使用原生 1:1 內容縮放";
+"settings.picker.macOSNativeScaling.default" = "使用 macOS 預設縮放";
+"settings.picker.macOSNativeScaling.native" = "使用原生 1:1 縮放";

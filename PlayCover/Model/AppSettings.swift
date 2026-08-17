@@ -50,6 +50,7 @@ struct AppSettingsData: Codable {
     var targetWindowHeight = 1080
     var contentScaleCompensationMode = ContentScaleCompensationMode.disabled
     var contentScaleCompensationValue = 0.77
+    var macOSNativeScaling: Bool?
     var aspectRatio = 1
     var notch: Bool = NSScreen.hasNotch()
     var bypass = false
@@ -112,6 +113,7 @@ struct AppSettingsData: Codable {
             Double.self,
             forKey: .contentScaleCompensationValue
         ) ?? 0.77
+        macOSNativeScaling = try container.decodeIfPresent(Bool.self, forKey: .macOSNativeScaling)
         aspectRatio = try container.decodeIfPresent(Int.self, forKey: .aspectRatio) ?? 1
         notch = try container.decodeIfPresent(Bool.self, forKey: .notch) ?? NSScreen.hasNotch()
         bypass = try container.decodeIfPresent(Bool.self, forKey: .bypass) ?? false
@@ -141,6 +143,20 @@ struct AppSettingsData: Codable {
         blockSleepSpamming = try container.decodeIfPresent(Bool.self, forKey: .blockSleepSpamming) ?? false
         ignoreUnityKeyboardInitializationError = try container.decodeIfPresent(
             Bool.self, forKey: .ignoreUnityKeyboardInitializationError) ?? false
+    }
+
+    var usesMacOSNativeScaling: Bool {
+        macOSNativeScaling == true
+    }
+
+    var isContentScaleCompensationAvailable: Bool {
+        resolution != 0 && resolution != 6
+    }
+
+    var isContentScaleCompensationActive: Bool {
+        !usesMacOSNativeScaling &&
+            isContentScaleCompensationAvailable &&
+            contentScaleCompensationMode != .disabled
     }
 }
 
@@ -180,6 +196,7 @@ class AppSettings {
         }
 
         settings.bundleIdentifier = info.bundleIdentifier
+        migrateNativeScalingIfNeeded()
     }
 
     public func sync() {
@@ -187,7 +204,18 @@ class AppSettings {
     }
 
     public func reset() {
-        settings = AppSettingsData()
+        var data = AppSettingsData()
+        data.macOSNativeScaling = false
+        settings = data
+    }
+
+    private func migrateNativeScalingIfNeeded() {
+        guard settings.macOSNativeScaling == nil else { return }
+        let container = AppContainer(bundleId: info.bundleIdentifier)
+        settings.macOSNativeScaling = NativeScalingPreferences.isEnabled(
+            bundleIdentifier: info.bundleIdentifier,
+            container: container
+        )
     }
 
     @discardableResult
