@@ -7,6 +7,18 @@ import Cocoa
 import Foundation
 import IOKit.pwr_mgt
 
+enum PlayAppLaunchMode: String {
+    case normal
+    case fresh
+}
+
+struct PlayAppLaunchResult {
+    let requestAccepted: Bool
+    let runningApplication: NSRunningApplication?
+
+    static let failed = PlayAppLaunchResult(requestAccepted: false, runningApplication: nil)
+}
+
 class PlayApp: BaseApp {
     // MARK: - Static
     public static let bundleIDCacheURL = PlayTools.playCoverContainer.appendingPathComponent("CACHE")
@@ -61,59 +73,71 @@ class PlayApp: BaseApp {
     lazy var container = AppContainer(bundleId: info.bundleIdentifier)
 
     // MARK: - Launch
-    func launch() async {
+    @discardableResult
+    func launch(mode: PlayAppLaunchMode = .normal,
+                runningTimeout: TimeInterval = 5) async -> PlayAppLaunchResult {
+        isStarting = true
+        defer { isStarting = false }
+
         do {
-            isStarting = true
+            guard try await prepareForLaunch() else { return .failed }
+            clearDebugAffectingEnvironment()
 
-            if prohibitedToPlay {
-                await clearAllCache()
-                throw PlayCoverError.appProhibited
-            } else if maliciousProhibited {
-                await clearAllCache()
-                deleteApp()
-                throw PlayCoverError.appMaliciousProhibited
-            }
-
-            AppsVM.shared.fetchApps()
-            if await VersionCheck.shared.checkNewVersion(myApp: self) { return }
-
-            settings.sync()
-
-            if try !Entitlements.areEntitlementsValid(app: self) {
-                sign()
-            }
-
-            if try !isInfoPlistSigned() {
-                try Shell.signApp(executable)
-            }
-
-            // Wait for keychain unlock to finish before continuing
-            await unlockKeyCover()
-
-            // If the app does not have PlayTools, do not install PlugIns
-            if hasPlayTools() {
-                try PlayTools.installPluginInIPA(url)
-            }
-
-            if try !PlayTools.isInstalled() {
-                Log.shared.error("PlayTools are not installed! Please move PlayCover.app into Applications!")
-            } else if try !Macho.isMachoValidArch(executable) {
-                Log.shared.error("The app threw an error during conversion.")
-            } else {
-                // Clear any debug-related env vars that could affect the launched app
-                self.clearDebugAffectingEnvironment()
-
-                if settings.openWithLLDB {
-                    applyNativeMacOSScaling()
-                    try Shell.lldb(executable, withTerminalWindow: settings.openLLDBWithTerminal)
-                } else {
-                    runAppExec() // Splitting to reduce complexity
+            if settings.openWithLLDB {
+                guard mode == .normal else {
+                    throw "Fresh launch is unavailable while LLDB launch is enabled"
                 }
+                applyNativeMacOSScaling()
+                try Shell.lldb(executable, withTerminalWindow: settings.openLLDBWithTerminal)
+                let runningApp = await waitForRunningApplication(timeout: runningTimeout)
+                if let runningApp = runningApp {
+                    monitorApplication(runningApp)
+                }
+                return PlayAppLaunchResult(requestAccepted: true, runningApplication: runningApp)
             }
-            isStarting = false
+            return try await runAppExec(mode: mode, runningTimeout: runningTimeout)
         } catch {
             Log.shared.error(error)
         }
+        return .failed
+    }
+
+    private func prepareForLaunch() async throws -> Bool {
+        if prohibitedToPlay {
+            await clearAllCache()
+            throw PlayCoverError.appProhibited
+        } else if maliciousProhibited {
+            await clearAllCache()
+            deleteApp()
+            throw PlayCoverError.appMaliciousProhibited
+        }
+
+        AppsVM.shared.fetchApps()
+        if await VersionCheck.shared.checkNewVersion(myApp: self) { return false }
+
+        settings.sync()
+        if try !Entitlements.areEntitlementsValid(app: self) {
+            sign()
+        }
+        if try !isInfoPlistSigned() {
+            try Shell.signApp(executable)
+        }
+
+        // Wait for keychain unlock to finish before continuing.
+        await unlockKeyCover()
+        // If the app does not have PlayTools, do not install PlugIns.
+        if hasPlayTools() {
+            try PlayTools.installPluginInIPA(url)
+        }
+        guard try PlayTools.isInstalled() else {
+            Log.shared.error("PlayTools are not installed! Please move PlayCover.app into Applications!")
+            return false
+        }
+        guard try Macho.isMachoValidArch(executable) else {
+            Log.shared.error("The app threw an error during conversion.")
+            return false
+        }
+        return true
     }
 }
 
@@ -230,9 +254,8 @@ extension PlayApp {
         alert.runModal()
     }
 
-    func runAppExec() {
-        let config = NSWorkspace.OpenConfiguration()
-
+    func runAppExec(mode: PlayAppLaunchMode = .normal,
+                    runningTimeout: TimeInterval = 5) async throws -> PlayAppLaunchResult {
         // Prevent propagating debugging-related variables to child process
         for (key, _) in ProcessInfo.processInfo.environment where key.hasPrefix("DYLD_") {
             unsetenv(key)
@@ -242,29 +265,78 @@ extension PlayApp {
         }
 
         applyNativeMacOSScaling()
-        NSWorkspace.shared.openApplication(
-            at: aliasURL,
-            configuration: config,
-            completionHandler: { runningApp, error in
-                guard error == nil else { return }
-                // Run a thread loop in the background to handle background tasks
-                Task(priority: .background) {
-                    if let runningApp = runningApp {
-                        while !(runningApp.isTerminated) {
-                            if runningApp.isActive {
-                                self.disableTimeOut()
-                            } else {
-                                self.enableTimeOut()
-                            }
-                            sleep(1)
-                        }
-                        sleep(1)
+
+        var result: PlayAppLaunchResult
+        switch mode {
+        case .normal:
+            result = try await openApplicationNormally()
+        case .fresh:
+            try Shell.run(print: false, "/usr/bin/open", "-F", aliasURL.path)
+            result = PlayAppLaunchResult(requestAccepted: true, runningApplication: nil)
+        }
+
+        if result.runningApplication == nil {
+            let runningApp = await waitForRunningApplication(timeout: runningTimeout)
+            result = PlayAppLaunchResult(
+                requestAccepted: result.requestAccepted,
+                runningApplication: runningApp
+            )
+        }
+
+        if let runningApp = result.runningApplication {
+            monitorApplication(runningApp)
+        }
+        return result
+    }
+
+    private func openApplicationNormally() async throws -> PlayAppLaunchResult {
+        let config = NSWorkspace.OpenConfiguration()
+        return try await withCheckedThrowingContinuation { continuation in
+            NSWorkspace.shared.openApplication(
+                at: aliasURL,
+                configuration: config,
+                completionHandler: { runningApp, error in
+                    if let error = error {
+                        continuation.resume(throwing: error)
+                        return
                     }
-                    // Things that are run after the app is closed
-                    self.lockKeyCover()
+                    continuation.resume(returning: PlayAppLaunchResult(
+                        requestAccepted: true,
+                        runningApplication: runningApp
+                    ))
                 }
+            )
+        }
+    }
+
+    private func waitForRunningApplication(timeout: TimeInterval) async -> NSRunningApplication? {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let runningApp = NSRunningApplication
+                .runningApplications(withBundleIdentifier: info.bundleIdentifier)
+                .first(where: { !$0.isTerminated }) {
+                return runningApp
             }
-        )
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        } while Date() < deadline
+        return nil
+    }
+
+    private func monitorApplication(_ runningApp: NSRunningApplication) {
+        // Run a thread loop in the background to handle background tasks.
+        Task(priority: .background) {
+            while !runningApp.isTerminated {
+                if runningApp.isActive {
+                    self.disableTimeOut()
+                } else {
+                    self.enableTimeOut()
+                }
+                sleep(1)
+            }
+            sleep(1)
+            // Things that are run after the app is closed.
+            self.lockKeyCover()
+        }
     }
 }
 

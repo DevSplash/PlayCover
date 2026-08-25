@@ -6,6 +6,20 @@
 import AppKit
 import Foundation
 
+private actor ManagementAppOperationRegistry {
+    static let shared = ManagementAppOperationRegistry()
+
+    private var activeBundleIdentifiers = Set<String>()
+
+    func acquire(_ bundleIdentifier: String) -> Bool {
+        activeBundleIdentifiers.insert(bundleIdentifier).inserted
+    }
+
+    func release(_ bundleIdentifier: String) {
+        activeBundleIdentifiers.remove(bundleIdentifier)
+    }
+}
+
 extension ManagementServer {
     func route(_ request: ManagementRequest) async -> ManagementResponse {
         switch request.pathSegments.first {
@@ -61,16 +75,34 @@ extension ManagementServer {
         case ("GET", 2):
             return await appResponse(bundleIdentifier: segments[1])
         case ("POST", 3) where segments[2] == "start":
-            return await startApp(bundleIdentifier: segments[1], body: request.jsonBody)
+            return await withAppOperation(bundleIdentifier: segments[1]) {
+                await self.startApp(bundleIdentifier: segments[1], body: request.jsonBody)
+            }
         case ("POST", 3) where segments[2] == "stop":
-            return await stopApp(bundleIdentifier: segments[1], body: request.jsonBody)
+            return await withAppOperation(bundleIdentifier: segments[1]) {
+                await self.stopApp(bundleIdentifier: segments[1], body: request.jsonBody)
+            }
         case ("POST", 3) where segments[2] == "restart":
-            return await restartApp(bundleIdentifier: segments[1], body: request.jsonBody)
+            return await withAppOperation(bundleIdentifier: segments[1]) {
+                await self.restartApp(bundleIdentifier: segments[1], body: request.jsonBody)
+            }
         case ("POST", 4) where segments[2] == "maatools" && segments[3] == "open":
-            return await openMaaTools(bundleIdentifier: segments[1], body: request.jsonBody)
+            return await withAppOperation(bundleIdentifier: segments[1]) {
+                await self.openMaaTools(bundleIdentifier: segments[1], body: request.jsonBody)
+            }
         default:
             return .notFound(["error": "not_found"])
         }
+    }
+
+    private func withAppOperation(bundleIdentifier: String,
+                                  operation: () async -> ManagementResponse) async -> ManagementResponse {
+        guard await ManagementAppOperationRegistry.shared.acquire(bundleIdentifier) else {
+            return .conflict(["error": "app_operation_in_progress"])
+        }
+        let response = await operation()
+        await ManagementAppOperationRegistry.shared.release(bundleIdentifier)
+        return response
     }
 
     private func appsResponse() async -> ManagementResponse {
@@ -109,7 +141,7 @@ extension ManagementServer {
         }
     }
 
-    private func installedApp(bundleIdentifier: String) async -> PlayApp? {
+    func installedApp(bundleIdentifier: String) async -> PlayApp? {
         await MainActor.run {
             if let app = AppsVM.shared.apps.first(where: { $0.info.bundleIdentifier == bundleIdentifier }) {
                 return app
@@ -139,13 +171,12 @@ extension ManagementServer {
         }
     }
 
-    private func status(for app: PlayApp) async -> [String: Any] {
+    func status(for app: PlayApp) async -> [String: Any] {
         let snapshot = await MainActor.run {
             let runningApp = self.runningApplication(bundleIdentifier: app.info.bundleIdentifier)
             return AppSnapshot(
                 bundleIdentifier: app.info.bundleIdentifier,
                 name: app.name,
-                path: app.url.path,
                 running: runningApp != nil,
                 pid: runningApp?.processIdentifier,
                 maaToolsEnabled: app.settings.settings.maaTools,
@@ -161,7 +192,7 @@ extension ManagementServer {
     }
 
     @MainActor
-    private func runningApplication(bundleIdentifier: String) -> NSRunningApplication? {
+    func runningApplication(bundleIdentifier: String) -> NSRunningApplication? {
         NSWorkspace.shared.runningApplications
             .first(where: { $0.bundleIdentifier == bundleIdentifier && !$0.isTerminated })
     }
@@ -178,8 +209,8 @@ extension ManagementServer {
             return .ok(await status(for: app))
         }
 
-        await app.launch()
-        let started = await waitForRunning(bundleIdentifier: bundleIdentifier, timeout: timeout)
+        let launchResult = await app.launch(runningTimeout: timeout)
+        let started = launchResult.runningApplication.map { !$0.isTerminated } ?? false
         guard started else {
             return .gatewayTimeout([
                 "error": "app_start_timeout",
@@ -196,7 +227,7 @@ extension ManagementServer {
         return .ok(currentStatus)
     }
 
-    private func stopApp(bundleIdentifier: String, body: ManagementBody) async -> ManagementResponse {
+    func stopApp(bundleIdentifier: String, body: ManagementBody) async -> ManagementResponse {
         guard let app = await installedApp(bundleIdentifier: bundleIdentifier) else {
             return .notFound(["error": "app_not_found"])
         }
@@ -250,101 +281,7 @@ extension ManagementServer {
         return .ok(currentStatus)
     }
 
-    private func openMaaTools(bundleIdentifier: String, body: ManagementBody) async -> ManagementResponse {
-        guard let app = await installedApp(bundleIdentifier: bundleIdentifier) else {
-            return .notFound(["error": "app_not_found"])
-        }
-
-        let requestedPort = body.intValue("port")
-        if body["port"] != nil && requestedPort == nil {
-            return .badRequest(["error": "invalid_port"])
-        }
-        if let requestedPort = requestedPort, !(1024 ... 65535).contains(requestedPort) {
-            return .badRequest(["error": "port_out_of_range"])
-        }
-        guard let portTimeout = body.timeoutValue("portTimeout", defaultValue: 15) else {
-            return .badRequest(["error": "port_timeout_out_of_range"])
-        }
-
-        let previousSettings = await MainActor.run {
-            MaaToolsSettingsSnapshot(
-                enabled: app.settings.settings.maaTools,
-                port: app.settings.settings.maaToolsPort
-            )
-        }
-        let port = requestedPort ?? previousSettings.port
-        let appIsRunning = await MainActor.run {
-            runningApplication(bundleIdentifier: bundleIdentifier) != nil
-        }
-
-        if await PortProbe.isOpen(host: "127.0.0.1", port: port) {
-            let probe = await MaaToolsProbe.inspect(
-                host: "127.0.0.1",
-                port: port,
-                expectedBundleIdentifier: bundleIdentifier
-            )
-            let mayBeBusyTarget = appIsRunning && previousSettings.enabled && previousSettings.port == port
-            if probe == nil && !mayBeBusyTarget {
-                return .conflict(["error": "maatools_port_in_use"])
-            }
-        }
-
-        await MainActor.run {
-            if let requestedPort = requestedPort {
-                app.settings.settings.maaToolsPort = requestedPort
-            }
-            app.settings.settings.maaTools = true
-        }
-
-        let shouldRestart = body.boolValue("restart", defaultValue: true)
-        if shouldRestart {
-            let stopResponse = await stopApp(bundleIdentifier: bundleIdentifier, body: body)
-            guard stopResponse.statusCode == 200 else {
-                await restoreMaaToolsSettings(previousSettings, for: app)
-                return stopResponse
-            }
-            let startResponse = await startApp(bundleIdentifier: bundleIdentifier, body: body)
-            guard startResponse.statusCode == 200 else {
-                await restoreMaaToolsSettings(previousSettings, for: app)
-                return startResponse
-            }
-
-            let probe = await waitForMaaTools(
-                bundleIdentifier: bundleIdentifier,
-                port: port,
-                timeout: portTimeout
-            )
-            if probe == nil {
-                await restoreMaaToolsSettings(previousSettings, for: app)
-                return .gatewayTimeout([
-                    "error": "maatools_port_unavailable",
-                    "status": await status(for: app)
-                ])
-            }
-        }
-
-        return .ok(await status(for: app))
-    }
-
-    private func restoreMaaToolsSettings(_ snapshot: MaaToolsSettingsSnapshot, for app: PlayApp) async {
-        await MainActor.run {
-            app.settings.settings.maaTools = snapshot.enabled
-            app.settings.settings.maaToolsPort = snapshot.port
-        }
-    }
-
-    private func waitForRunning(bundleIdentifier: String, timeout: TimeInterval) async -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if await MainActor.run(body: { runningApplication(bundleIdentifier: bundleIdentifier) != nil }) {
-                return true
-            }
-            try? await Task.sleep(nanoseconds: 200_000_000)
-        }
-        return false
-    }
-
-    private func waitForStopped(bundleIdentifier: String, timeout: TimeInterval) async -> Bool {
+    func waitForStopped(bundleIdentifier: String, timeout: TimeInterval) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if await MainActor.run(body: { runningApplication(bundleIdentifier: bundleIdentifier) == nil }) {
@@ -355,23 +292,4 @@ extension ManagementServer {
         return false
     }
 
-    private func waitForMaaTools(bundleIdentifier: String,
-                                 port: Int,
-                                 timeout: TimeInterval) async -> MaaToolsProbeResult? {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let result = await MaaToolsProbe.inspect(
-                host: "127.0.0.1",
-                port: port,
-                expectedBundleIdentifier: bundleIdentifier
-            ) {
-                Log.shared.log(
-                    "Verified MaaTools v\(result.version) for \(result.bundleIdentifier) on port \(port)"
-                )
-                return result
-            }
-            try? await Task.sleep(nanoseconds: 300_000_000)
-        }
-        return nil
-    }
 }

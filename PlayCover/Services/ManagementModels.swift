@@ -56,6 +56,10 @@ struct ManagementBody {
         values[key] as? Bool ?? defaultValue
     }
 
+    func stringValue(_ key: String) -> String? {
+        values[key] as? String
+    }
+
     func timeoutValue(_ key: String, defaultValue: TimeInterval) -> TimeInterval? {
         let value: Double
         if let rawValue = values[key] {
@@ -148,7 +152,6 @@ struct MaaToolsSettingsSnapshot {
 struct AppSnapshot {
     let bundleIdentifier: String
     let name: String
-    let path: String
     let running: Bool
     let pid: pid_t?
     let maaToolsEnabled: Bool
@@ -165,7 +168,6 @@ struct AppSnapshot {
         return [
             "bundleIdentifier": bundleIdentifier,
             "name": name,
-            "path": path,
             "running": running,
             "pid": processIdentifier,
             "maaTools": [
