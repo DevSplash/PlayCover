@@ -180,9 +180,12 @@ class AppSettings {
     let settingsUrl: URL
     var openWithLLDB: Bool = false
     var openLLDBWithTerminal: Bool = true
+    private var suppressAutomaticEncoding = false
     var settings: AppSettingsData {
         didSet {
-            encode()
+            if !suppressAutomaticEncoding {
+                encode()
+            }
         }
     }
 
@@ -203,10 +206,38 @@ class AppSettings {
         settings.notch = NSScreen.hasNotch()
     }
 
-    public func reset() {
+    @discardableResult
+    public func reset() -> Bool {
+        let previousMetalHUD = settings.metalHUD
+        do {
+            try Shell.setMetalHUD(info.bundleIdentifier, enabled: false)
+        } catch {
+            Log.shared.error(error)
+            return false
+        }
+
         var data = AppSettingsData()
+        data.bundleIdentifier = info.bundleIdentifier
         data.macOSNativeScaling = false
-        settings = data
+        guard replace(with: data) else {
+            do {
+                try Shell.setMetalHUD(info.bundleIdentifier, enabled: previousMetalHUD)
+            } catch {
+                Log.shared.error(error)
+            }
+            return false
+        }
+        return true
+    }
+
+    @discardableResult
+    func replace(with newSettings: AppSettingsData) -> Bool {
+        guard encode(newSettings) else { return false }
+
+        suppressAutomaticEncoding = true
+        settings = newSettings
+        suppressAutomaticEncoding = false
+        return true
     }
 
     private func migrateNativeScalingIfNeeded() {
@@ -232,12 +263,16 @@ class AppSettings {
 
     @discardableResult
     public func encode() -> Bool {
+        encode(settings)
+    }
+
+    private func encode(_ settings: AppSettingsData) -> Bool {
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .xml
 
         do {
             let data = try encoder.encode(settings)
-            try data.write(to: settingsUrl)
+            try data.write(to: settingsUrl, options: .atomic)
             return true
         } catch {
             print(error)

@@ -365,6 +365,9 @@
 "settings.alert.nativeScalingRestart.quitAndReopen" = "Quit & Reopen";
 "settings.alert.nativeScalingRestart.later" = "Later";
 "settings.alert.nativeScalingRestart.quitFailed" = "The app did not quit. Quit it manually and reopen it from PlayCover.";
+"settings.alert.nativeScalingAppRunning.message" = "Quit the app to change macOS content scaling.";
+"settings.alert.nativeScalingApplyFailed.message" = "Failed to apply macOS content scaling. The change was not saved and the previous setting remains selected.";
+"settings.alert.resetFailed.message" = "Failed to reset settings. The previous settings remain selected.";
 "settings.picker.macOSNativeScaling" = "macOS content scale";
 "settings.picker.macOSNativeScaling.help" = "Use the default macOS iPad app scale, or force native 1:1 content scale";
 "settings.picker.macOSNativeScaling.default" = "Use macOS default scaling";

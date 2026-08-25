@@ -397,6 +397,9 @@
 "settings.alert.nativeScalingRestart.quitAndReopen" = "結束並重新開啟";
 "settings.alert.nativeScalingRestart.later" = "稍後";
 "settings.alert.nativeScalingRestart.quitFailed" = "應用未能結束。請手動結束後從 PlayCover 重新開啟。";
+"settings.alert.nativeScalingAppRunning.message" = "請先完全結束該 App，再修改 macOS 內容縮放。";
+"settings.alert.nativeScalingApplyFailed.message" = "無法套用 macOS 內容縮放；變更未儲存，仍保留先前的設定。";
+"settings.alert.resetFailed.message" = "無法重設設定；變更未儲存，仍保留先前的設定。";
 "settings.picker.macOSNativeScaling" = "macOS 內容縮放";
 "settings.picker.macOSNativeScaling.help" = "使用 macOS 預設 iPad App 縮放，或強制使用原生 1:1 內容縮放";
 "settings.picker.macOSNativeScaling.default" = "使用 macOS 預設縮放";

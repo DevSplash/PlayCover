@@ -19,6 +19,12 @@ struct PlayAppLaunchResult {
     static let failed = PlayAppLaunchResult(requestAccepted: false, runningApplication: nil)
 }
 
+enum NativeScalingChangeResult {
+    case applied
+    case appRunning
+    case failed
+}
+
 class PlayApp: BaseApp {
     // MARK: - Static
     public static let bundleIDCacheURL = PlayTools.playCoverContainer.appendingPathComponent("CACHE")
@@ -177,81 +183,60 @@ extension PlayApp {
     }
 
     // MARK: - Native Scaling
-    func resetSettings() {
-        settings.reset()
-        applyNativeMacOSScaling()
-        promptNativeScalingRestart()
-    }
+    @discardableResult
+    func resetSettings() -> Bool {
+        guard !isAppRunning() else { return false }
 
-    func applyNativeMacOSScaling() {
-        NativeScalingPreferences.apply(
+        return NativeScalingPreferences.apply(
             bundleIdentifier: info.bundleIdentifier,
             container: container,
-            enabled: settings.settings.usesMacOSNativeScaling
+            enabled: false,
+            commit: {
+                guard !self.isAppRunning() else { return false }
+                return self.settings.reset()
+            }
         )
     }
 
-    func promptNativeScalingRestart() {
-        let running = NSRunningApplication
-            .runningApplications(withBundleIdentifier: info.bundleIdentifier)
-            .filter { !$0.isTerminated }
-        guard !running.isEmpty else { return }
+    func changeNativeMacOSScaling(enabled: Bool,
+                                  updatedSettings: AppSettingsData) -> NativeScalingChangeResult {
+        guard !isAppRunning() else { return .appRunning }
 
-        let alert = NSAlert()
-        alert.messageText = NSLocalizedString("settings.alert.nativeScalingRestart.title", comment: "")
-        alert.informativeText = NSLocalizedString("settings.alert.nativeScalingRestart.message",
-                                                  comment: "")
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: NSLocalizedString("settings.alert.nativeScalingRestart.quitAndReopen",
-                                                     comment: ""))
-        alert.addButton(withTitle: NSLocalizedString("settings.alert.nativeScalingRestart.later",
-                                                     comment: ""))
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        Task { await quitAndReopenForNativeScaling() }
+        var candidate = updatedSettings
+        candidate.bundleIdentifier = info.bundleIdentifier
+        candidate.macOSNativeScaling = enabled
+        var blockedByRunningApp = false
+        let applied = NativeScalingPreferences.apply(
+            bundleIdentifier: info.bundleIdentifier,
+            container: container,
+            enabled: enabled,
+            commit: {
+                guard !self.isAppRunning() else {
+                    blockedByRunningApp = true
+                    return false
+                }
+                return self.settings.replace(with: candidate)
+            }
+        )
+        if applied {
+            return .applied
+        }
+        return blockedByRunningApp || isAppRunning() ? .appRunning : .failed
     }
 
-    func quitAndReopenForNativeScaling() async {
-        applyNativeMacOSScaling()
-        await requestQuitForNativeScaling()
-        if isAppRunning() {
-            Log.shared.log(
-                "Native scaling restart aborted; \(info.bundleIdentifier) did not quit",
-                isError: true
-            )
-            await MainActor.run { presentNativeScalingQuitFailedAlert() }
-            return
-        }
-        await launch()
-    }
-
-    func requestQuitForNativeScaling() async {
-        let running = NSRunningApplication
-            .runningApplications(withBundleIdentifier: info.bundleIdentifier)
-            .filter { !$0.isTerminated }
-        await MainActor.run {
-            running.forEach { $0.terminate() }
-        }
-
-        let deadline = Date().addingTimeInterval(10)
-        while Date() < deadline && isAppRunning() {
-            try? await Task.sleep(nanoseconds: 100_000_000)
-        }
+    @discardableResult
+    func applyNativeMacOSScaling(enabled: Bool? = nil) -> Bool {
+        NativeScalingPreferences.apply(
+            bundleIdentifier: info.bundleIdentifier,
+            container: container,
+            enabled: enabled ?? settings.settings.usesMacOSNativeScaling
+        )
     }
 
     func isAppRunning() -> Bool {
         NSRunningApplication
             .runningApplications(withBundleIdentifier: info.bundleIdentifier)
             .contains { !$0.isTerminated }
-    }
-
-    func presentNativeScalingQuitFailedAlert() {
-        let alert = NSAlert()
-        alert.messageText = NSLocalizedString("settings.alert.nativeScalingRestart.title", comment: "")
-        alert.informativeText = NSLocalizedString("settings.alert.nativeScalingRestart.quitFailed",
-                                                  comment: "")
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: NSLocalizedString("button.OK", comment: ""))
-        alert.runModal()
     }
 
     func runAppExec(mode: PlayAppLaunchMode = .normal,
