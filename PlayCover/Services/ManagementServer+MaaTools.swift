@@ -143,16 +143,20 @@ extension ManagementServer {
                                       previousSettings: MaaToolsSettingsSnapshot) async -> ManagementResponse? {
         guard await PortProbe.isOpen(host: "127.0.0.1", port: context.port) else { return nil }
 
+        if let probe = await MaaToolsProbe.inspect(host: "127.0.0.1", port: context.port) {
+            guard probe.bundleIdentifier != context.bundleIdentifier else { return nil }
+            return .conflict([
+                "error": "maatools_port_in_use",
+                "bundleIdentifier": probe.bundleIdentifier,
+                "version": probe.version
+            ])
+        }
+
         let appIsRunning = await MainActor.run {
             runningApplication(bundleIdentifier: context.bundleIdentifier) != nil
         }
-        let probe = await MaaToolsProbe.inspect(
-            host: "127.0.0.1",
-            port: context.port,
-            expectedBundleIdentifier: context.bundleIdentifier
-        )
         let mayBeBusyTarget = appIsRunning && previousSettings.enabled && previousSettings.port == context.port
-        guard probe == nil && !mayBeBusyTarget else { return nil }
+        guard !mayBeBusyTarget else { return nil }
         return .conflict(["error": "maatools_port_in_use"])
     }
 

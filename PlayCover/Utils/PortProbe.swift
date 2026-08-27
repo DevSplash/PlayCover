@@ -26,19 +26,25 @@ struct MaaToolsProbeResult: Sendable {
 enum MaaToolsProbe {
     static func inspect(host: String,
                         port: Int,
-                        expectedBundleIdentifier: String,
                         timeout: TimeInterval = 0.5) async -> MaaToolsProbeResult? {
         await Task.detached(priority: .utility) {
-            inspectSync(host: host,
-                        port: port,
-                        expectedBundleIdentifier: expectedBundleIdentifier,
-                        timeout: timeout)
+            inspectSync(host: host, port: port, timeout: timeout)
         }.value
+    }
+
+    static func inspect(host: String,
+                        port: Int,
+                        expectedBundleIdentifier: String,
+                        timeout: TimeInterval = 0.5) async -> MaaToolsProbeResult? {
+        guard let result = await inspect(host: host, port: port, timeout: timeout),
+              result.bundleIdentifier == expectedBundleIdentifier else {
+            return nil
+        }
+        return result
     }
 
     private static func inspectSync(host: String,
                                     port: Int,
-                                    expectedBundleIdentifier: String,
                                     timeout: TimeInterval) -> MaaToolsProbeResult? {
         guard let socketDescriptor = SocketProbe.connect(host: host, port: port, timeout: timeout) else {
             return nil
@@ -64,7 +70,7 @@ enum MaaToolsProbe {
         guard (1 ... 4096).contains(bundleLength),
               let bundleData = SocketProbe.receive(count: bundleLength, from: socketDescriptor),
               let bundleIdentifier = String(data: bundleData, encoding: .utf8),
-              bundleIdentifier == expectedBundleIdentifier else {
+              !bundleIdentifier.isEmpty else {
             return nil
         }
 

@@ -157,7 +157,7 @@ struct AppSnapshot {
     let maaToolsEnabled: Bool
     let maaToolsPort: Int
 
-    func dictionary(maaToolsReachable: Bool) -> [String: Any] {
+    func dictionary(probe: MaaToolsProbeResult?) -> [String: Any] {
         let processIdentifier: Any
         if let pid = pid {
             processIdentifier = Int(pid)
@@ -170,11 +170,24 @@ struct AppSnapshot {
             "name": name,
             "running": running,
             "pid": processIdentifier,
-            "maaTools": [
-                "enabled": maaToolsEnabled,
-                "port": maaToolsPort,
-                "reachable": maaToolsReachable
-            ]
+            "maaTools": maaToolsDictionary(probe: probe)
         ]
+    }
+
+    private func maaToolsDictionary(probe: MaaToolsProbeResult?) -> [String: Any] {
+        let matched = probe?.bundleIdentifier == bundleIdentifier
+        var maaTools: [String: Any] = [
+            "enabled": maaToolsEnabled,
+            "port": maaToolsPort,
+            "reachable": matched
+        ]
+        if let probe {
+            maaTools["version"] = probe.version
+            maaTools["bundleIdentifier"] = probe.bundleIdentifier
+        } else {
+            maaTools["version"] = NSNull()
+            maaTools["bundleIdentifier"] = NSNull()
+        }
+        return maaTools
     }
 }

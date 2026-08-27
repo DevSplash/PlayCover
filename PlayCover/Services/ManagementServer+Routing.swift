@@ -171,7 +171,7 @@ extension ManagementServer {
         }
     }
 
-    func status(for app: PlayApp) async -> [String: Any] {
+    func status(for app: PlayApp, verifyMaaTools: Bool = true) async -> [String: Any] {
         let snapshot = await MainActor.run {
             let runningApp = self.runningApplication(bundleIdentifier: app.info.bundleIdentifier)
             return AppSnapshot(
@@ -184,11 +184,12 @@ extension ManagementServer {
             )
         }
 
-        let reachable = snapshot.maaToolsEnabled
-            ? await PortProbe.isOpen(host: "127.0.0.1", port: snapshot.maaToolsPort)
-            : false
+        let shouldProbe = verifyMaaTools && snapshot.maaToolsEnabled && snapshot.running
+        let probe = shouldProbe
+            ? await MaaToolsProbe.inspect(host: "127.0.0.1", port: snapshot.maaToolsPort)
+            : nil
 
-        return snapshot.dictionary(maaToolsReachable: reachable)
+        return snapshot.dictionary(probe: probe)
     }
 
     @MainActor
