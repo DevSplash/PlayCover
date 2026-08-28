@@ -73,6 +73,15 @@ To learn how to setup and use PlayCover, visit the documentation [here](https://
 For automation, see the [Management API](Documentation.docc/ManagementAPI.md).
 `GET /apps` returns app summaries without probing MaaTools; use
 `GET /apps/{bundleIdentifier}` for verified MaaTools connectivity and identity.
+Each MaaTools probe shares one 2-second deadline by default across TCP connection
+and the complete handshake; partial replies do not extend it.
+Startup readiness probes and the one-second confirmation gap share `portTimeout`;
+individual probes cannot extend that window.
+
+For managed launches, `fresh=fallback` retries with `open -F` only when no running
+process was observed or it exited before MaaTools became ready, after confirming
+the process is stopped and the port closed. A still-running process with a
+MaaTools timeout does not trigger a fresh retry.
 
 ### Homebrew Cask
 We host a [Homebrew](https://brew.sh) tap with the [PlayCover cask](https://github.com/PlayCover/homebrew-playcover/blob/master/Casks/playcover-community.rb). To install from it run:

@@ -291,31 +291,43 @@ extension ManagementServer {
                                        bundleIdentifier: String,
                                        port: Int,
                                        timeout: TimeInterval) async -> ManagedLaunchOutcome {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
+        guard let deadline = SocketProbeDeadline(timeout: timeout) else {
+            return runningApp.isTerminated ? .exitedBeforeReady : .maaToolsTimeout
+        }
+        while !deadline.isExpired {
             if runningApp.isTerminated {
                 return .exitedBeforeReady
             }
             if let result = await MaaToolsProbe.inspect(
                 host: "127.0.0.1",
                 port: port,
-                expectedBundleIdentifier: bundleIdentifier
+                expectedBundleIdentifier: bundleIdentifier,
+                within: deadline
             ) {
+                guard !runningApp.isTerminated else { return .exitedBeforeReady }
+                // Preserve the full stability interval; do not start it if the budget cannot cover it.
+                guard deadline.remainingTime > 1 else { break }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard !runningApp.isTerminated else { return .exitedBeforeReady }
+                guard !deadline.isExpired else { break }
                 guard await MaaToolsProbe.inspect(
                     host: "127.0.0.1",
                     port: port,
-                    expectedBundleIdentifier: bundleIdentifier
+                    expectedBundleIdentifier: bundleIdentifier,
+                    within: deadline
                 ) != nil else {
                     continue
                 }
+                guard !runningApp.isTerminated else { return .exitedBeforeReady }
+                guard !deadline.isExpired else { break }
                 Log.shared.log(
                     "Verified MaaTools v\(result.version) for \(result.bundleIdentifier) on port \(port)"
                 )
                 return .ready
             }
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            let remaining = deadline.remainingTime
+            guard remaining > 0 else { break }
+            try? await Task.sleep(nanoseconds: UInt64(min(0.3, remaining) * 1_000_000_000))
         }
         return runningApp.isTerminated ? .exitedBeforeReady : .maaToolsTimeout
     }

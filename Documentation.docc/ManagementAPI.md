@@ -83,6 +83,13 @@ port that is not MaaTools, or that belongs to a different bundle, returns
 `reachable: false`. If the handshake succeeds for another bundle,
 `maaTools.bundleIdentifier` is that other bundle.
 
+Each MaaTools probe has one monotonic deadline, 2 seconds by default, shared by
+TCP connection, all sends, the handshake acknowledgment, `VERN`, and the complete
+`BNDL` response. Partial replies and interrupted I/O do not reset that budget.
+Expiry closes the probe connection and is treated as a failed probe. This bounds
+network waiting, not operating-system scheduling delays or the duration of a
+whole launch/restart request, which can perform multiple probes.
+
 ### Start App
 
 ```http
@@ -152,8 +159,13 @@ and restarts the app by default so the injected PlayTools process opens the requ
 `fresh` controls how the app is launched after a restart:
 
 - `off` (default if omitted): normal launch
-- `fallback`: try a normal launch first; if the process never becomes ready, stop it and retry with `open -F`
+- `fallback`: try a normal launch first; retry with `open -F` only if no running
+  process was observed or the process exited before MaaTools became ready
 - `always`: launch with `open -F`
+
+Before a fallback retry, PlayCover waits for the earlier process to be stopped
+and its port to be closed. A still-running process whose MaaTools probe times
+out, or a rejected launch request, does not trigger fallback.
 
 `fresh` values other than `off` require `restart` to be `true` (the default).
 `restart: false` with `fresh` set to `fallback` or `always` returns `400` with
@@ -174,6 +186,15 @@ After a restart, PlayCover completes the MaaTools handshake, reads the
 protocol version, and verifies the target bundle identifier. If verification times out,
 the endpoint returns `504` with `maatools_port_unavailable` and restores the previous
 saved MaaTools settings. `portTimeout` must be between 0.1 and 120 seconds.
+
+For each launch attempt, `portTimeout` is a shared monotonic readiness budget,
+covering probes, retry delays, and the existing one-second gap before the required
+second successful handshake. Each probe is capped at both two seconds and the
+remaining readiness budget. An insufficient window produces a timeout rather
+than shortening the confirmation gap or starting more probes after expiry.
+This readiness budget does not cover the entire open request, which also includes
+shutdown, launch, and response status collection.
+
 When the port is changed without a restart, the new value is saved but a running app
 continues listening on its previous MaaTools port until it is restarted.
 The response `maaTools` object uses the same handshake check as app status:
