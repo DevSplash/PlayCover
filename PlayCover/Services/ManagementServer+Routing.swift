@@ -107,14 +107,18 @@ extension ManagementServer {
 
     private func appsResponse() async -> ManagementResponse {
         let apps = await installedApps()
-        var statuses: [[String: Any]] = []
-        for app in apps {
-            statuses.append(await status(for: app))
+        let snapshots = await MainActor.run {
+            let runningApps = NSWorkspace.shared.runningApplications.filter { !$0.isTerminated }
+            return apps.map { app in
+                appSnapshot(for: app, runningApp: runningApps.first {
+                    $0.bundleIdentifier == app.info.bundleIdentifier
+                })
+            }
         }
-        statuses.sort {
-            ($0["bundleIdentifier"] as? String ?? "") < ($1["bundleIdentifier"] as? String ?? "")
-        }
-        return .ok(["apps": statuses])
+        let summaries = snapshots
+            .sorted { $0.bundleIdentifier < $1.bundleIdentifier }
+            .map { $0.summaryDictionary() }
+        return .ok(["apps": summaries])
     }
 
     private func appResponse(bundleIdentifier: String) async -> ManagementResponse {
@@ -173,15 +177,7 @@ extension ManagementServer {
 
     func status(for app: PlayApp, verifyMaaTools: Bool = true) async -> [String: Any] {
         let snapshot = await MainActor.run {
-            let runningApp = self.runningApplication(bundleIdentifier: app.info.bundleIdentifier)
-            return AppSnapshot(
-                bundleIdentifier: app.info.bundleIdentifier,
-                name: app.name,
-                running: runningApp != nil,
-                pid: runningApp?.processIdentifier,
-                maaToolsEnabled: app.settings.settings.maaTools,
-                maaToolsPort: app.settings.settings.maaToolsPort
-            )
+            appSnapshot(for: app, runningApp: runningApplication(bundleIdentifier: app.info.bundleIdentifier))
         }
 
         let shouldProbe = verifyMaaTools && snapshot.maaToolsEnabled && snapshot.running
@@ -190,6 +186,18 @@ extension ManagementServer {
             : nil
 
         return snapshot.dictionary(probe: probe)
+    }
+
+    @MainActor
+    private func appSnapshot(for app: PlayApp, runningApp: NSRunningApplication?) -> AppSnapshot {
+        AppSnapshot(
+            bundleIdentifier: app.info.bundleIdentifier,
+            name: app.name,
+            running: runningApp != nil,
+            pid: runningApp?.processIdentifier,
+            maaToolsEnabled: app.settings.settings.maaTools,
+            maaToolsPort: app.settings.settings.maaToolsPort
+        )
     }
 
     @MainActor

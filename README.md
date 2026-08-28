@@ -70,6 +70,10 @@ You can download stable releases [here](https://github.com/PlayCover/PlayCover/r
 
 To learn how to setup and use PlayCover, visit the documentation [here](https://playcover.github.io/PlayBook).
 
+For automation, see the [Management API](Documentation.docc/ManagementAPI.md).
+`GET /apps` returns app summaries without probing MaaTools; use
+`GET /apps/{bundleIdentifier}` for verified MaaTools connectivity and identity.
+
 ### Homebrew Cask
 We host a [Homebrew](https://brew.sh) tap with the [PlayCover cask](https://github.com/PlayCover/homebrew-playcover/blob/master/Casks/playcover-community.rb). To install from it run:
 

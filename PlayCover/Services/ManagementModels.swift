@@ -157,7 +157,7 @@ struct AppSnapshot {
     let maaToolsEnabled: Bool
     let maaToolsPort: Int
 
-    func dictionary(probe: MaaToolsProbeResult?) -> [String: Any] {
+    func summaryDictionary() -> [String: Any] {
         let processIdentifier: Any
         if let pid = pid {
             processIdentifier = Int(pid)
@@ -170,8 +170,14 @@ struct AppSnapshot {
             "name": name,
             "running": running,
             "pid": processIdentifier,
-            "maaTools": maaToolsDictionary(probe: probe)
+            "maaTools": ["enabled": maaToolsEnabled, "port": maaToolsPort]
         ]
+    }
+
+    func dictionary(probe: MaaToolsProbeResult?) -> [String: Any] {
+        var status = summaryDictionary()
+        status["maaTools"] = maaToolsDictionary(probe: probe)
+        return status
     }
 
     private func maaToolsDictionary(probe: MaaToolsProbeResult?) -> [String: Any] {

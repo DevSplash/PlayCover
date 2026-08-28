@@ -41,9 +41,23 @@ Returns whether the management server is running and the current listen endpoint
 GET /apps
 ```
 
-Returns installed PlayCover apps and their runtime status.
-MaaTools is probed only for apps that are running with MaaTools enabled.
-Stopped apps are not probed.
+Returns `{"apps": [...]}` with installed PlayCover app summaries, sorted by
+`bundleIdentifier`. Each summary contains:
+
+- `bundleIdentifier`
+- `name`
+- `running`
+- `pid` (or `null` when not running)
+- `maaTools.enabled`
+- `maaTools.port` (the configured port)
+
+This endpoint does not connect to MaaTools, including for running apps. It omits
+`maaTools.reachable`, `maaTools.version`, and `maaTools.bundleIdentifier`: no probe
+was performed, which is different from a failed probe. Listing apps therefore
+does not wait for MaaTools connection or handshake timeouts.
+
+Use `GET /apps/{bundleIdentifier}` when verified MaaTools status is needed.
+Clients must treat list entries as summaries, not complete app status objects.
 
 ### App Status
 
