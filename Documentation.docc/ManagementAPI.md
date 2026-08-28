@@ -86,9 +86,12 @@ port that is not MaaTools, or that belongs to a different bundle, returns
 Each MaaTools probe has one monotonic deadline, 2 seconds by default, shared by
 TCP connection, all sends, the handshake acknowledgment, `VERN`, and the complete
 `BNDL` response. Partial replies and interrupted I/O do not reset that budget.
-Expiry closes the probe connection and is treated as a failed probe. This bounds
-network waiting, not operating-system scheduling delays or the duration of a
-whole launch/restart request, which can perform multiple probes.
+The budget starts before the worker is scheduled, so queueing and scheduling
+delays consume it too. On observing expiry, the worker closes any probe connection
+and reports failure, even if the final bytes have arrived. This is not a hard
+real-time guarantee: the operating system may delay the worker or the response
+past the deadline. Nor is it a deadline for a whole launch/restart request, which
+can perform multiple probes.
 
 ### Start App
 
@@ -192,8 +195,21 @@ covering probes, retry delays, and the existing one-second gap before the requir
 second successful handshake. Each probe is capped at both two seconds and the
 remaining readiness budget. An insufficient window produces a timeout rather
 than shortening the confirmation gap or starting more probes after expiry.
+Leave `portTimeout` at its 15-second default unless a different readiness budget
+is required. Values at or below one second cannot cover the confirmation gap;
+values near two seconds can time out even after the first handshake succeeds,
+especially under load. A readiness timeout restores settings but does not itself
+terminate the running app.
 This readiness budget does not cover the entire open request, which also includes
 shutdown, launch, and response status collection.
+
+For a successful restart, the response can reuse the final confirmation probe
+from this request while its original probe deadline is still valid. PlayCover
+first checks that the app is still running with the same process ID, that the
+original process has not exited, and that the bundle, enabled setting, and
+configured port still match. Otherwise it collects status normally, probing only
+if the app is running with MaaTools enabled. There is no cross-request probe
+cache; `GET /apps/{bundleIdentifier}` always performs its own status check.
 
 When the port is changed without a restart, the new value is saved but a running app
 continues listening on its previous MaaTools port until it is restarted.

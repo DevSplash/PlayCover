@@ -74,9 +74,15 @@ For automation, see the [Management API](Documentation.docc/ManagementAPI.md).
 `GET /apps` returns app summaries without probing MaaTools; use
 `GET /apps/{bundleIdentifier}` for verified MaaTools connectivity and identity.
 Each MaaTools probe shares one 2-second deadline by default across TCP connection
-and the complete handshake; partial replies do not extend it.
+and the complete handshake, starting before worker scheduling; queueing consumes
+the budget and partial replies do not extend it. Returning exactly by the deadline
+is not guaranteed if the operating system delays execution.
 Startup readiness probes and the one-second confirmation gap share `portTimeout`;
-individual probes cannot extend that window.
+individual probes cannot extend that window. Keep the 15-second default unless
+needed otherwise: a short window can expire after the first successful handshake.
+Successful opens can reuse their final verified probe for the response only while
+its original deadline is valid and the running process, bundle, and MaaTools settings
+still match; otherwise status is collected normally. Other requests never reuse it.
 
 For managed launches, `fresh=fallback` retries with `open -F` only when no running
 process was observed or it exited before MaaTools became ready, after confirming

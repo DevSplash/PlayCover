@@ -12,15 +12,28 @@ private enum ManagementFreshMode: String {
     case always
 }
 
-private enum ManagedLaunchOutcome: String {
-    case ready
+private enum ManagedLaunchOutcome {
+    case ready(MaaToolsStatusVerification)
     case exitedBeforeReady
     case noProcess
     case requestFailed
     case maaToolsTimeout
 
+    var responseValue: String {
+        switch self {
+        case .ready: return "ready"
+        case .exitedBeforeReady: return "exitedBeforeReady"
+        case .noProcess: return "noProcess"
+        case .requestFailed: return "requestFailed"
+        case .maaToolsTimeout: return "maaToolsTimeout"
+        }
+    }
+
     var allowsFreshFallback: Bool {
-        self == .exitedBeforeReady || self == .noProcess
+        switch self {
+        case .exitedBeforeReady, .noProcess: return true
+        default: return false
+        }
     }
 }
 
@@ -39,7 +52,7 @@ private struct ManagedLaunchAttempt {
         }
         return [
             "mode": mode.rawValue,
-            "outcome": outcome.rawValue,
+            "outcome": outcome.responseValue,
             "pid": processIdentifier,
             "elapsedMs": elapsedMilliseconds
         ]
@@ -224,12 +237,15 @@ extension ManagementServer {
             await restoreMaaToolsSettings(previousSettings, for: context.app)
             return .serviceUnavailable(["error": "app_launch_failed"])
         }
-        guard outcome != .ready else {
-            return .ok(await status(for: context.app, launchSummary: summary))
+        let verification: MaaToolsStatusVerification?
+        if case let .ready(result) = outcome {
+            verification = result
+        } else {
+            await restoreMaaToolsSettings(previousSettings, for: context.app)
+            verification = nil
         }
 
-        await restoreMaaToolsSettings(previousSettings, for: context.app)
-        let currentStatus = await status(for: context.app, launchSummary: summary)
+        let currentStatus = await status(for: context.app, launchSummary: summary, reusing: verification)
         switch outcome {
         case .ready:
             return .ok(currentStatus)
@@ -245,8 +261,9 @@ extension ManagementServer {
     }
 
     private func status(for app: PlayApp,
-                        launchSummary: ManagedLaunchSummary) async -> [String: Any] {
-        var currentStatus = await status(for: app)
+                        launchSummary: ManagedLaunchSummary,
+                        reusing verification: MaaToolsStatusVerification? = nil) async -> [String: Any] {
+        var currentStatus = await status(for: app, reusing: verification)
         currentStatus["launch"] = launchSummary.dictionary
         return currentStatus
     }
@@ -298,24 +315,27 @@ extension ManagementServer {
             if runningApp.isTerminated {
                 return .exitedBeforeReady
             }
-            if let result = await MaaToolsProbe.inspect(
+            if await MaaToolsProbe.inspect(
                 host: "127.0.0.1",
                 port: port,
                 expectedBundleIdentifier: bundleIdentifier,
                 within: deadline
-            ) {
+            ) != nil {
                 guard !runningApp.isTerminated else { return .exitedBeforeReady }
                 // Preserve the full stability interval; do not start it if the budget cannot cover it.
                 guard deadline.remainingTime > 1 else { break }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard !runningApp.isTerminated else { return .exitedBeforeReady }
                 guard !deadline.isExpired else { break }
-                guard await MaaToolsProbe.inspect(
+                guard let confirmationDeadline = SocketProbeDeadline(
+                    timeout: MaaToolsProbe.defaultTimeout, boundedBy: deadline
+                ) else { break }
+                guard let result = await MaaToolsProbe.inspect(
                     host: "127.0.0.1",
                     port: port,
                     expectedBundleIdentifier: bundleIdentifier,
-                    within: deadline
-                ) != nil else {
+                    within: confirmationDeadline
+                ) else {
                     continue
                 }
                 guard !runningApp.isTerminated else { return .exitedBeforeReady }
@@ -323,7 +343,9 @@ extension ManagementServer {
                 Log.shared.log(
                     "Verified MaaTools v\(result.version) for \(result.bundleIdentifier) on port \(port)"
                 )
-                return .ready
+                return .ready(MaaToolsStatusVerification(
+                    probe: result, runningApp: runningApp, port: port, deadline: confirmationDeadline
+                ))
             }
             let remaining = deadline.remainingTime
             guard remaining > 0 else { break }

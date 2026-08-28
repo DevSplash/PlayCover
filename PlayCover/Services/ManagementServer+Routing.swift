@@ -6,6 +6,23 @@
 import AppKit
 import Foundation
 
+// A request-local readiness result, tied to the original process, port, and probe budget.
+struct MaaToolsStatusVerification {
+    let probe: MaaToolsProbeResult
+    let runningApp: NSRunningApplication
+    let port: Int
+    let deadline: SocketProbeDeadline
+
+    @MainActor
+    func matches(_ snapshot: AppSnapshot) -> Bool {
+        snapshot.maaToolsEnabled && snapshot.running &&
+            snapshot.bundleIdentifier == probe.bundleIdentifier &&
+            snapshot.maaToolsPort == port &&
+            snapshot.pid == runningApp.processIdentifier &&
+            !runningApp.isTerminated
+    }
+}
+
 private actor ManagementAppOperationRegistry {
     static let shared = ManagementAppOperationRegistry()
 
@@ -175,12 +192,21 @@ extension ManagementServer {
         }
     }
 
-    func status(for app: PlayApp, verifyMaaTools: Bool = true) async -> [String: Any] {
-        let snapshot = await MainActor.run {
-            appSnapshot(for: app, runningApp: runningApplication(bundleIdentifier: app.info.bundleIdentifier))
+    func status(for app: PlayApp,
+                reusing verification: MaaToolsStatusVerification? = nil) async -> [String: Any] {
+        let (snapshot, canReuse) = await MainActor.run {
+            let snapshot = appSnapshot(
+                for: app, runningApp: runningApplication(bundleIdentifier: app.info.bundleIdentifier)
+            )
+            return (snapshot, verification?.matches(snapshot) ?? false)
         }
 
-        let shouldProbe = verifyMaaTools && snapshot.maaToolsEnabled && snapshot.running
+        // Recheck expiry after the actor hop; queueing must not extend the probe's validity.
+        if let verification, canReuse, !verification.deadline.isExpired {
+            return snapshot.dictionary(probe: verification.probe)
+        }
+
+        let shouldProbe = snapshot.maaToolsEnabled && snapshot.running
         let probe = shouldProbe
             ? await MaaToolsProbe.inspect(host: "127.0.0.1", port: snapshot.maaToolsPort)
             : nil
